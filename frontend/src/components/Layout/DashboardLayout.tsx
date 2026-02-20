@@ -12,6 +12,7 @@ import {
   ShieldAlert,
   Activity as ActivityIcon,
   BarChart3,
+  Files,
 } from "lucide-react";
 import { useWallet } from "../../hooks/useWallet";
 
@@ -29,6 +30,7 @@ const DashboardLayout: React.FC = () => {
         { label: 'Overview', path: '/dashboard', icon: LayoutDashboard },
         { label: 'Proposals', path: '/dashboard/proposals', icon: FileText },
         { label: 'Activity', path: '/dashboard/activity', icon: ActivityIcon },
+        { label: 'Templates', path: '/dashboard/templates', icon: Files },
         { label: 'Analytics', path: '/dashboard/analytics', icon: BarChart3 },
         { label: 'Settings', path: '/dashboard/settings', icon: Settings },
     ];

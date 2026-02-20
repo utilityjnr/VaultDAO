@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { LayoutDashboard, FileText, CheckCircle, Wallet, Loader2 } from 'lucide-react';
 import StatCard from '../../components/Layout/StatCard';
 import { useVaultContract } from '../../hooks/useVaultContract';
-import { LayoutDashboard, FileText, CheckCircle, Wallet, Loader2 } from 'lucide-react';
+import { getAllTemplates, getMostUsedTemplates } from '../../utils/templates';
 
 interface DashboardStats {
     totalBalance: string;
@@ -16,26 +18,36 @@ const Overview: React.FC = () => {
     const { getDashboardStats, loading } = useVaultContract();
     const [stats, setStats] = useState<DashboardStats | null>(null);
 
+    const quickActionTemplates = (() => {
+        const mostUsed = getMostUsedTemplates(3);
+        if (mostUsed.length > 0) {
+            return mostUsed;
+        }
+        return getAllTemplates().slice(0, 3);
+    })();
+
     useEffect(() => {
         let isMounted = true;
         const fetchData = async () => {
             try {
-                const s = await getDashboardStats();
+                const result = await getDashboardStats();
                 if (isMounted) {
-                    setStats(s as DashboardStats);
+                    setStats(result as DashboardStats);
                 }
-            } catch (err) {
-                console.error("Failed to fetch dashboard data", err);
+            } catch (error) {
+                console.error('Failed to fetch dashboard data', error);
             }
         };
         fetchData();
-        return () => { isMounted = false; };
+        return () => {
+            isMounted = false;
+        };
     }, [getDashboardStats]);
 
     if (loading && !stats) {
         return (
             <div className="h-96 flex items-center justify-center">
-                <Loader2 className="w-10 h-10 text-purple-500 animate-spin" />
+                <Loader2 className="h-10 w-10 animate-spin text-purple-500" />
             </div>
         );
     }
@@ -51,33 +63,55 @@ const Overview: React.FC = () => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard 
-                    title="Vault Balance" 
-                    value={`${stats?.totalBalance || '0'} XLM`} 
-                    icon={Wallet} 
-                    variant="primary" 
+                <StatCard
+                    title="Vault Balance"
+                    value={`${stats?.totalBalance || '0'} XLM`}
+                    icon={Wallet}
+                    variant="primary"
                 />
-                <StatCard 
-                    title="Active Proposals" 
-                    value={stats?.totalProposals || 0} 
-                    subtitle={`${stats?.pendingApprovals || 0} pending vote`} 
-                    icon={FileText} 
-                    variant="warning" 
+                <StatCard
+                    title="Active Proposals"
+                    value={stats?.totalProposals || 0}
+                    subtitle={`${stats?.pendingApprovals || 0} pending vote`}
+                    icon={FileText}
+                    variant="warning"
                 />
-                <StatCard 
-                    title="Ready to Execute" 
-                    value={stats?.readyToExecute || 0} 
-                    subtitle="Passed timelock" 
-                    icon={CheckCircle} 
-                    variant="success" 
+                <StatCard
+                    title="Ready to Execute"
+                    value={stats?.readyToExecute || 0}
+                    subtitle="Passed timelock"
+                    icon={CheckCircle}
+                    variant="success"
                 />
-                <StatCard 
-                    title="Active Signers" 
-                    value={stats?.activeSigners || 0} 
-                    subtitle={`Threshold: ${stats?.threshold || "0/0"}`} 
-                    icon={LayoutDashboard} 
-                    variant="primary" 
+                <StatCard
+                    title="Active Signers"
+                    value={stats?.activeSigners || 0}
+                    subtitle={`Threshold: ${stats?.threshold || '0/0'}`}
+                    icon={LayoutDashboard}
+                    variant="primary"
                 />
+            </div>
+
+            <div className="rounded-xl border border-gray-700 bg-gray-800 p-4 sm:p-6">
+                <div className="mb-4 flex items-center justify-between gap-3">
+                    <h3 className="text-lg font-semibold">Quick Actions</h3>
+                    <Link to="/dashboard/templates" className="text-sm text-purple-300 hover:text-purple-200">
+                        Manage templates
+                    </Link>
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+                    {quickActionTemplates.map((template) => (
+                        <Link
+                            key={template.id}
+                            to={`/dashboard/proposals?template=${encodeURIComponent(template.id)}`}
+                            className="min-h-[44px] rounded-lg border border-gray-600 bg-gray-900 p-3 text-left transition-colors hover:border-purple-500"
+                        >
+                            <p className="font-medium text-white">{template.name}</p>
+                            <p className="text-sm text-gray-400">{template.category}</p>
+                            <p className="text-xs text-gray-500">Used {template.usageCount} times</p>
+                        </Link>
+                    ))}
+                </div>
             </div>
         </div>
     );

@@ -1,15 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useWallet } from '../../context/WalletContext';
-import { useToast } from '../../context/ToastContext';
 import { useVaultContract } from '../../hooks/useVaultContract';
 import ConfirmationModal from '../../components/ConfirmationModal';
-import ExportModal, { type ExportDatasets } from '../../components/ExportModal';
-import { saveExportHistoryItem } from '../../utils/exportHistory';
-import ProposalDetailModal from '../../components/ProposalDetailModal';
-import { ArrowUpRight, Clock, Plus } from 'lucide-react';
-
-// Ledger cadence: ~5 seconds per ledger on Stellar.
-const SECONDS_PER_LEDGER = 5;
+import NewProposalModal, { type NewProposalFormData } from '../../components/NewProposalModal';
+import ProposalTemplates from '../../components/ProposalTemplates';
+import {
+    createTemplate,
+    extractTemplateVariables,
+    getTemplateById,
+    interpolateTemplate,
+    recordTemplateUsage,
+    TEMPLATE_CATEGORIES,
+    type ProposalTemplate,
+} from '../../utils/templates';
 
 interface Proposal {
     id: number;
@@ -22,459 +26,497 @@ interface Proposal {
     approvals: number;
     threshold: number;
     createdAt: string;
-    /** Unlock ledger for timelocked proposals (0 = no timelock). */
-    unlockLedger?: number;
-    /** Current network ledger sequence for timelock calculation. */
-    currentLedger?: number;
 }
 
+// Mock data for demonstration
 const mockProposals: Proposal[] = [
     {
-        id: 102,
-        proposer: 'GA5W...7K9L',
-        recipient: 'GD26L4...Z3X4',
-        amount: '2,500',
-        token: 'XLM',
-        memo: 'Quarterly server maintenance costs',
+        id: 1,
+        proposer: 'GABC...XYZ1',
+        recipient: 'GDEF...ABC2',
+        amount: '1000',
+        token: 'USDC',
+        memo: 'Marketing budget',
         status: 'Pending',
         approvals: 1,
         threshold: 3,
-        createdAt: '2h ago',
+        createdAt: '2024-02-15',
     },
     {
-        id: 101,
-        proposer: 'GB2R...4M1P',
-        recipient: 'GCEYUX...R7T2',
-        amount: '12,000',
-        token: 'XLM',
-        memo: 'Marketing grant for ecosystem growth',
-        status: 'Executed',
-        approvals: 3,
-        threshold: 3,
-        createdAt: '2024-02-14',
-        // No timelock — can be executed immediately
-        unlockLedger: 0,
-        currentLedger: 1000,
-    },
-    {
-        id: 3,
+        id: 2,
         proposer: 'GABC...XYZ1',
-        recipient: 'GKLM...GHI4',
-        amount: '5000',
+        recipient: 'GHIJ...DEF3',
+        amount: '500',
         token: 'XLM',
-        memo: 'Q1 payroll',
+        memo: 'Development costs',
         status: 'Approved',
         approvals: 3,
         threshold: 3,
-        createdAt: '2024-02-13',
-        // Still timelocked — unlocks at ledger 1500, currently at 1200
-        unlockLedger: 1500,
-        currentLedger: 1200,
+        createdAt: '2024-02-14',
     },
 ];
 
-// ---------------------------------------------------------------------------
-// TimelockCountdown helper component
-// ---------------------------------------------------------------------------
-
-interface TimelockCountdownProps {
-    ledgersRemaining: number;
-}
-
-const TimelockCountdown: React.FC<TimelockCountdownProps> = ({ ledgersRemaining }) => {
-    const totalSeconds = ledgersRemaining * SECONDS_PER_LEDGER;
-    const [secondsLeft, setSecondsLeft] = useState(totalSeconds);
-
-    useEffect(() => {
-        if (secondsLeft <= 0) return;
-        const interval = setInterval(() => setSecondsLeft(s => Math.max(0, s - 60)), 60_000);
-        return () => clearInterval(interval);
-    }, [secondsLeft]);
-
-    const hours = Math.floor(secondsLeft / 3600);
-    const minutes = Math.floor((secondsLeft % 3600) / 60);
-
-    const label =
-        hours > 0
-            ? `Unlocks in ${hours}h ${minutes}m`
-            : minutes > 0
-            ? `Unlocks in ${minutes}m`
-            : 'Unlocking soon…';
-
-    return (
-        <span className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
-            <svg
-                className="w-3.5 h-3.5 shrink-0"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-            >
-                <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-            </svg>
-            {label}
-        </span>
-    );
-};
-
-// ---------------------------------------------------------------------------
-// Main component
-// ---------------------------------------------------------------------------
-
 const Proposals: React.FC = () => {
     const { address, isConnected } = useWallet();
-    const { notify } = useToast();
-    const { rejectProposal, executeProposal, loading } = useVaultContract();
+    const { proposeTransfer, rejectProposal, loading } = useVaultContract();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [proposals, setProposals] = useState<Proposal[]>(mockProposals);
-    const [selectedProposal, setSelectedProposal] = useState<Proposal | null>(null);
+    const [selectedProposal, setSelectedProposal] = useState<number | null>(null);
     const [showRejectModal, setShowRejectModal] = useState(false);
-    const [executingId, setExecutingId] = useState<number | null>(null);
-    const [rejectingId, setRejectingId] = useState<number | null>(null);
-    const [showExportModal, setShowExportModal] = useState(false);
-
-    const exportDatasets: ExportDatasets = useMemo(() => {
-        const proposalRows = proposals.map((p) => ({
-            id: p.id,
-            proposer: p.proposer,
-            recipient: p.recipient,
-            amount: p.amount,
-            token: p.token,
-            memo: p.memo,
-            status: p.status,
-            approvals: p.approvals,
-            threshold: p.threshold,
-            createdAt: p.createdAt,
-        }));
-        const executed = proposals.filter((p) => p.status === 'Executed');
-        const transactionRows = executed.map((p) => ({
-            id: p.id,
-            type: 'proposal_executed',
-            timestamp: p.createdAt,
-            amount: p.amount,
-            token: p.token,
-            recipient: p.recipient,
-            proposer: p.proposer,
-        }));
-        return {
-            proposals: proposalRows,
-            activity: proposalRows.map((p) => ({ ...p, type: 'proposal', timestamp: p.createdAt })),
-            transactions: transactionRows,
-        };
-    }, [proposals]);
+    const [showNewProposalModal, setShowNewProposalModal] = useState(false);
+    const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+    const [selectedTemplateName, setSelectedTemplateName] = useState<string | null>(null);
+    const [newProposalForm, setNewProposalForm] = useState<NewProposalFormData>({
+        recipient: '',
+        token: '',
+        amount: '',
+        memo: '',
+    });
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
     // Mock user role - in production, fetch from contract
     const userRole = 'Admin'; // or 'Treasurer' or 'None'
 
-    // ---------------------------------------------------------------------------
-    // Timelock helpers
-    // ---------------------------------------------------------------------------
-
-    const getLedgersRemaining = (proposal: Proposal): number => {
-        if (!proposal.unlockLedger || proposal.unlockLedger === 0) return 0;
-        const current = proposal.currentLedger ?? 0;
-        return Math.max(0, proposal.unlockLedger - current);
-    };
-
-    const isTimelockExpired = (proposal: Proposal): boolean =>
-        getLedgersRemaining(proposal) === 0;
-
-    const canExecuteProposal = (proposal: Proposal): boolean =>
-        proposal.status === 'Approved' &&
-        proposal.approvals >= proposal.threshold &&
-        isTimelockExpired(proposal);
-
-    // ---------------------------------------------------------------------------
-    // Reject handlers
-    // ---------------------------------------------------------------------------
-
     const canRejectProposal = (proposal: Proposal): boolean => {
-        if (!isConnected || !address) return true; // demo mode
+        if (!isConnected || !address) {
+            // For demo purposes, allow rejection even without wallet connection
+            // In production, this should return false
+            return true;
+        }
+        // User can reject if they are the proposer or an admin
         return proposal.proposer === address || userRole === 'Admin';
     };
 
-    const handleRejectClick = (e: React.MouseEvent, proposalId: number) => {
-        e.stopPropagation(); 
-        setRejectingId(proposalId);
+    const handleRejectClick = (proposalId: number) => {
+        setSelectedProposal(proposalId);
         setShowRejectModal(true);
     };
 
     const handleRejectConfirm = async (reason?: string) => {
-        if (rejectingId === null) return;
+        if (selectedProposal === null) return;
+
         try {
-            // Passing reason to contract or logging it to satisfy TS unused variable check
-            console.log(`Rejecting proposal ${rejectingId} for reason: ${reason || 'No reason provided'}`);
-            await rejectProposal(rejectingId);
+            // Call contract to reject proposal
+            const txHash = await rejectProposal(selectedProposal);
             
-            setProposals(prev =>
-                prev.map(p =>
-                    p.id === rejectingId ? { ...p, status: 'Rejected' as const } : p
+            // Update local state
+            setProposals((prev) =>
+                prev.map((proposal) =>
+                    proposal.id === selectedProposal ? { ...proposal, status: 'Rejected' as const } : proposal
                 )
             );
 
-            notify('proposal_rejected', `Proposal #${rejectingId} rejected successfully`, 'success');
+            // Show success toast
+            setToast({
+                message: `Proposal #${selectedProposal} rejected successfully`,
+                type: 'success',
+            });
+
+            console.log('Rejection reason:', reason);
+            console.log('Transaction hash:', txHash);
         } catch (error: unknown) {
+            // Show error toast
             const message = error instanceof Error ? error.message : 'Failed to reject proposal';
-            notify('proposal_rejected', message, 'error');
+            setToast({
+                message,
+                type: 'error',
+            });
         } finally {
             setShowRejectModal(false);
-            setRejectingId(null);
+            setSelectedProposal(null);
         }
     };
 
     const handleRejectCancel = () => {
         setShowRejectModal(false);
-        setRejectingId(null);
+        setSelectedProposal(null);
     };
 
-    // ---------------------------------------------------------------------------
-    // Execute handler
-    // ---------------------------------------------------------------------------
+    // Auto-hide toast after 5 seconds
+    useEffect(() => {
+        if (toast) {
+            const timer = setTimeout(() => setToast(null), 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [toast]);
 
-    const handleExecuteClick = async (e: React.MouseEvent, proposalId: number) => {
-        e.stopPropagation();
-        setExecutingId(proposalId);
+    const applyTemplate = useCallback(
+        (template: ProposalTemplate) => {
+            const variables = extractTemplateVariables(template).variableNames;
+            const values: Record<string, string> = {};
+
+            for (const variable of variables) {
+                const input = window.prompt(`Enter value for ${variable}`, '');
+                if (input === null) {
+                    return;
+                }
+                values[variable] = input.trim();
+            }
+
+            const interpolated = interpolateTemplate(template, values);
+            setNewProposalForm({
+                recipient: interpolated.recipient,
+                amount: interpolated.amount,
+                token: interpolated.token,
+                memo: interpolated.memo,
+            });
+            setSelectedTemplateName(template.name);
+            recordTemplateUsage(template.id);
+            setShowTemplateSelector(false);
+            setShowNewProposalModal(true);
+            setToast({
+                message: `Applied template "${template.name}"`,
+                type: 'success',
+            });
+        },
+        []
+    );
+
+    useEffect(() => {
+        const templateId = searchParams.get('template');
+        if (!templateId) {
+            return;
+        }
+
+        const template = getTemplateById(templateId);
+        if (template) {
+            applyTemplate(template);
+        } else {
+            setToast({
+                message: 'Template not found',
+                type: 'error',
+            });
+        }
+        setSearchParams({}, { replace: true });
+    }, [applyTemplate, searchParams, setSearchParams]);
+
+    const handleFormChange = (field: keyof NewProposalFormData, value: string) => {
+        setNewProposalForm((prev) => ({ ...prev, [field]: value }));
+    };
+
+    const resetNewProposalForm = () => {
+        setNewProposalForm({
+            recipient: '',
+            token: '',
+            amount: '',
+            memo: '',
+        });
+        setSelectedTemplateName(null);
+    };
+
+    const handleSaveAsTemplate = () => {
+        const name = window.prompt('Template name', '');
+        if (!name) {
+            return;
+        }
+
+        const categoryInput = window.prompt(
+            `Template category (${TEMPLATE_CATEGORIES.join(', ')})`,
+            'Custom'
+        );
+        if (!categoryInput) {
+            return;
+        }
+        const normalizedCategory = TEMPLATE_CATEGORIES.find(
+            (category) => category.toLowerCase() === categoryInput.toLowerCase()
+        );
+        if (!normalizedCategory) {
+            setToast({
+                message: 'Invalid template category',
+                type: 'error',
+            });
+            return;
+        }
+
+        const description = window.prompt('Template description', '') ?? '';
+
         try {
-            const txHash = await executeProposal(proposalId);
-            setProposals(prev =>
-                prev.map(p =>
-                    p.id === proposalId ? { ...p, status: 'Executed' as const } : p
-                )
+            createTemplate(
+                name,
+                normalizedCategory,
+                description,
+                newProposalForm.recipient,
+                newProposalForm.amount,
+                newProposalForm.token,
+                newProposalForm.memo
             );
-            notify(
-                'proposal_executed' as never,
-                `Proposal #${proposalId} executed — funds transferred successfully`,
-                'success'
-            );
-            console.log('Execution tx hash:', txHash);
-        } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : 'Failed to execute proposal';
-            notify('proposal_executed' as never, message, 'error');
-        } finally {
-            setExecutingId(null);
+            setToast({
+                message: `Saved template "${name}"`,
+                type: 'success',
+            });
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to save template';
+            setToast({
+                message,
+                type: 'error',
+            });
         }
     };
 
-    // ---------------------------------------------------------------------------
-    // Styling helpers
-    // ---------------------------------------------------------------------------
+    const handleCreateProposal = async (event: React.FormEvent) => {
+        event.preventDefault();
+        if (
+            !newProposalForm.recipient.trim() ||
+            !newProposalForm.token.trim() ||
+            !newProposalForm.amount.trim() ||
+            !newProposalForm.memo.trim()
+        ) {
+            setToast({
+                message: 'All proposal fields are required',
+                type: 'error',
+            });
+            return;
+        }
+
+        try {
+            const txHash = await proposeTransfer(
+                newProposalForm.recipient.trim(),
+                newProposalForm.token.trim(),
+                newProposalForm.amount.trim(),
+                newProposalForm.memo.trim()
+            );
+
+            const nextId = proposals.length === 0 ? 1 : Math.max(...proposals.map((proposal) => proposal.id)) + 1;
+            const proposer = address ?? 'Connected signer';
+            const createdAt = new Date().toISOString().slice(0, 10);
+            setProposals((prev) => [
+                {
+                    id: nextId,
+                    proposer,
+                    recipient: newProposalForm.recipient.trim(),
+                    amount: newProposalForm.amount.trim(),
+                    token: newProposalForm.token.trim(),
+                    memo: newProposalForm.memo.trim(),
+                    status: 'Pending',
+                    approvals: 0,
+                    threshold: 3,
+                    createdAt,
+                },
+                ...prev,
+            ]);
+
+            setToast({
+                message: `Proposal created. Tx: ${txHash.slice(0, 10)}...`,
+                type: 'success',
+            });
+            setShowNewProposalModal(false);
+            resetNewProposalForm();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to create proposal';
+            setToast({
+                message,
+                type: 'error',
+            });
+        }
+    };
 
     const getStatusColor = (status: Proposal['status']) => {
         switch (status) {
-            case 'Pending':  return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
-            case 'Approved': return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-            case 'Executed': return 'bg-green-500/10 text-green-400 border-green-500/20';
-            case 'Rejected': return 'bg-red-500/10 text-red-400 border-red-500/20';
-            case 'Expired':  return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
-            default:         return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+            case 'Pending':
+                return 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20';
+            case 'Approved':
+                return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
+            case 'Executed':
+                return 'bg-green-500/10 text-green-400 border-green-500/20';
+            case 'Rejected':
+                return 'bg-red-500/10 text-red-400 border-red-500/20';
+            case 'Expired':
+                return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+            default:
+                return 'bg-gray-500/10 text-gray-400 border-gray-500/20';
         }
     };
 
-    // ---------------------------------------------------------------------------
-    // Render
-    // ---------------------------------------------------------------------------
-
-
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-bold text-white tracking-tight">Proposals</h2>
-                <div className="flex items-center gap-2">
+            {/* Header */}
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                <h2 className="text-3xl font-bold">Proposals</h2>
+                <div className="flex flex-col gap-2 sm:flex-row">
                     <button
                         type="button"
-                        onClick={() => setShowExportModal(true)}
-                        className="rounded-xl bg-gray-700 px-4 py-2.5 font-semibold text-white hover:bg-gray-600"
+                        onClick={() => setShowTemplateSelector(true)}
+                        className="min-h-[44px] rounded-lg bg-gray-700 px-4 py-2 font-medium text-white transition-colors hover:bg-gray-600"
                     >
-                        Export
+                        Use Template
                     </button>
-                    <button className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white px-5 py-2.5 rounded-xl font-bold transition-all hover:scale-105 active:scale-95 shadow-lg shadow-purple-500/20">
-                        <Plus size={20} />
-                        <span>New Proposal</span>
+                    <button
+                        type="button"
+                        onClick={() => setShowNewProposalModal(true)}
+                        className="min-h-[44px] rounded-lg bg-purple-600 px-4 py-2 font-medium text-white transition-colors hover:bg-purple-700"
+                    >
+                        New Proposal
                     </button>
                 </div>
             </div>
 
-                        <div className="space-y-4">
+            {/* Toast Notification */}
+            {toast && (
+                <div
+                    className={`fixed top-4 right-4 z-50 px-6 py-4 rounded-lg shadow-lg border ${
+                        toast.type === 'success'
+                            ? 'bg-green-500/10 text-green-400 border-green-500/20'
+                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                    }`}
+                >
+                    <div className="flex items-center gap-3">
+                        <span>{toast.message}</span>
+                        <button
+                            onClick={() => setToast(null)}
+                            className="text-gray-400 hover:text-white"
+                        >
+                            ×
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Proposals List */}
+            <div className="space-y-4">
                 {proposals.length === 0 ? (
-                    <div className="bg-gray-800 rounded-xl border border-gray-700 p-8 text-center text-gray-400">
-                        <p>No proposals found.</p>
+                    <div className="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+                        <div className="p-8 text-center text-gray-400">
+                            <p>No proposals found.</p>
+                        </div>
                     </div>
                 ) : (
-                    proposals.map((proposal) => {
-                        const ledgersLeft = getLedgersRemaining(proposal);
-                        const timelocked = ledgersLeft > 0;
-                        const isExecuting = executingId === proposal.id && loading;
+                    proposals.map((proposal) => (
+                        <div
+                            key={proposal.id}
+                            className="bg-gray-800 rounded-xl border border-gray-700 p-4 sm:p-6"
+                        >
+                            {/* Mobile Layout */}
+                            <div className="space-y-4">
+                                {/* Header Row */}
+                                <div className="flex justify-between items-start gap-4">
+                                    <div>
+                                        <h3 className="text-lg font-semibold text-white">
+                                            Proposal #{proposal.id}
+                                        </h3>
+                                        <p className="text-sm text-gray-400 mt-1">
+                                            {proposal.memo}
+                                        </p>
+                                    </div>
+                                    <span
+                                        className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                            proposal.status
+                                        )}`}
+                                    >
+                                        {proposal.status}
+                                    </span>
+                                </div>
 
-                        return (
-                            <div
-                                key={proposal.id}
-                                onClick={() => setSelectedProposal(proposal)}
-                                className="bg-gray-800/50 rounded-2xl border border-gray-700 hover:border-purple-500/50 cursor-pointer transition-all hover:scale-[1.01] p-4 sm:p-6 group"
-                            >
-                                <div className="space-y-4">
-                                    {/* Header Row */}
-                                    <div className="flex justify-between items-start gap-4">
-                                        <div className="flex items-center gap-4">
-                                            <div className="p-3 bg-gray-900 rounded-xl text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors">
-                                                <ArrowUpRight size={20} />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-lg font-semibold text-white">
-                                                    Proposal #{proposal.id}
-                                                </h3>
-                                                <p className="text-sm text-gray-400 mt-1">{proposal.memo}</p>
-                                            </div>
-                                        </div>
-                                        <span
-                                            className={`px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(proposal.status)}`}
-                                        >
-                                            {proposal.status}
+                                {/* Details Grid */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <span className="text-gray-400">Amount:</span>
+                                        <span className="text-white ml-2 font-medium">
+                                            {proposal.amount} {proposal.token}
                                         </span>
                                     </div>
-
-                                    {/* Details Grid */}
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                                        <div>
-                                            <span className="text-gray-400">Amount:</span>
-                                            <span className="text-white ml-2 font-medium">
-                                                {proposal.amount} {proposal.token}
-                                            </span>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Approvals:</span>
-                                            <span className="text-white ml-2 font-medium">
-                                                {proposal.approvals}/{proposal.threshold}
-                                            </span>
-                                        </div>
-                                        <div className="sm:col-span-2">
-                                            <span className="text-gray-400">Recipient:</span>
-                                            <span className="text-white ml-2 font-mono text-xs">
-                                                {proposal.recipient}
-                                            </span>
-                                        </div>
-                                        <div className="sm:col-span-2">
-                                            <span className="text-gray-400">Proposer:</span>
-                                            <span className="text-white ml-2 font-mono text-xs">
-                                                {proposal.proposer}
-                                            </span>
-                                        </div>
-                                        <div>
-                                            <span className="text-gray-400">Created:</span>
-                                            <span className="text-white ml-2 flex items-center gap-1">
-                                                <Clock size={12} /> {proposal.createdAt}
-                                            </span>
-                                        </div>
+                                    <div>
+                                        <span className="text-gray-400">Approvals:</span>
+                                        <span className="text-white ml-2 font-medium">
+                                            {proposal.approvals}/{proposal.threshold}
+                                        </span>
                                     </div>
-
-                                    {/* Timelock countdown */}
-                                    {proposal.status === 'Approved' && timelocked && (
-                                        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
-                                            <TimelockCountdown ledgersRemaining={ledgersLeft} />
-                                            <span className="text-xs text-gray-400">
-                                                (~{ledgersLeft.toLocaleString()} ledgers remaining)
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    {/* Actions */}
-                                    {proposal.status === 'Pending' && (
-                                        <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                                            <button className="flex-1 sm:flex-none bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 sm:py-2 rounded-lg font-medium transition-colors min-h-[44px] sm:min-h-0">
-                                                Approve
-                                            </button>
-                                            {canRejectProposal(proposal) && (
-                                                <button
-                                                    onClick={(e) => handleRejectClick(e, proposal.id)}
-                                                    disabled={loading}
-                                                    className="flex-1 sm:flex-none bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white px-6 py-3 sm:py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0"
-                                                >
-                                                    {loading && rejectingId === proposal.id ? '...' : 'Reject'}
-                                                </button>
-                                            )}
-                                        </div>
-                                    )}
-
-                                    {proposal.status === 'Approved' && (
-                                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 pt-2">
-                                            <button
-                                                onClick={(e) => handleExecuteClick(e, proposal.id)}
-                                                disabled={!canExecuteProposal(proposal) || isExecuting}
-                                                title={
-                                                    timelocked
-                                                        ? `Timelocked — wait ${ledgersLeft} more ledgers`
-                                                        : 'Execute this proposal to transfer funds'
-                                                }
-                                                className="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white px-6 py-3 sm:py-2 rounded-lg font-medium transition-colors min-h-[44px] sm:min-h-0"
-                                            >
-                                                {isExecuting ? (
-                                                    <>
-                                                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                                                        </svg>
-                                                        Executing…
-                                                    </>
-                                                ) : timelocked ? (
-                                                    <>
-                                                        <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                                                        </svg>
-                                                        Execute (Locked)
-                                                    </>
-                                                ) : (
-                                                    'Execute'
-                                                )}
-                                            </button>
-                                            {timelocked && (
-                                                <p className="text-xs text-gray-400">
-                                                    This proposal is timelocked for large transfers.
-                                                </p>
-                                            )}
-                                        </div>
-                                    )}
+                                    <div className="sm:col-span-2">
+                                        <span className="text-gray-400">Recipient:</span>
+                                        <span className="text-white ml-2 font-mono text-xs">
+                                            {proposal.recipient}
+                                        </span>
+                                    </div>
+                                    <div className="sm:col-span-2">
+                                        <span className="text-gray-400">Proposer:</span>
+                                        <span className="text-white ml-2 font-mono text-xs">
+                                            {proposal.proposer}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-400">Created:</span>
+                                        <span className="text-white ml-2">
+                                            {proposal.createdAt}
+                                        </span>
+                                    </div>
                                 </div>
+
+                                {/* Actions */}
+                                {proposal.status === 'Pending' && (
+                                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                                        <button className="flex-1 sm:flex-none bg-purple-600 hover:bg-purple-700 text-white px-6 py-3 sm:py-2 rounded-lg font-medium transition-colors min-h-[44px] sm:min-h-0">
+                                            Approve
+                                        </button>
+                                        {canRejectProposal(proposal) && (
+                                            <button
+                                                onClick={() => handleRejectClick(proposal.id)}
+                                                disabled={loading}
+                                                className="flex-1 sm:flex-none bg-red-600 hover:bg-red-700 text-white px-6 py-3 sm:py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] sm:min-h-0"
+                                            >
+                                                {loading && selectedProposal === proposal.id
+                                                    ? 'Rejecting...'
+                                                    : 'Reject'}
+                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {proposal.status === 'Approved' && (
+                                    <button className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white px-6 py-3 sm:py-2 rounded-lg font-medium transition-colors min-h-[44px] sm:min-h-0">
+                                        Execute
+                                    </button>
+                                )}
                             </div>
-                        );
-                    })
+                        </div>
+                    ))
                 )}
             </div>
 
-            <ExportModal
-                isOpen={showExportModal}
-                onClose={() => setShowExportModal(false)}
-                vaultName="VaultDAO"
-                vaultAddress={address ?? 'G000000000000000000000000000000000'}
-                initialDataType="proposals"
-                datasets={exportDatasets}
-                onExported={(meta) =>
-                    saveExportHistoryItem({
-                        filename: meta.filename,
-                        dataType: meta.dataType,
-                        format: meta.format,
-                        exportedAt: new Date().toISOString(),
-                        vaultName: 'VaultDAO',
-                        vaultAddress: address ?? undefined,
-                        storedContent: meta.storedContent,
-                        mimeType: meta.mimeType,
-                    })
-                }
-            />
-            <ProposalDetailModal 
-                isOpen={!!selectedProposal} 
-                onClose={() => setSelectedProposal(null)} 
-                proposal={selectedProposal} 
-            />
+            {/* Confirmation Modal */}
             <ConfirmationModal
                 isOpen={showRejectModal}
                 title="Reject Proposal"
-                message="Are you sure you want to reject this? This action is permanent."
+                message="Are you sure you want to reject this proposal? This action is permanent and cannot be undone."
+                confirmText="Reject Proposal"
+                cancelText="Cancel"
                 onConfirm={handleRejectConfirm}
                 onCancel={handleRejectCancel}
                 showReasonInput={true}
+                reasonPlaceholder="Enter rejection reason (optional)"
                 isDestructive={true}
+            />
+
+            {/* Template Selector Modal */}
+            {showTemplateSelector ? (
+                <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4">
+                    <div className="max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-xl border border-gray-700 bg-gray-900 p-4 sm:p-6">
+                        <div className="mb-4 flex items-center justify-between">
+                            <h3 className="text-xl font-semibold text-white">Select Template</h3>
+                            <button
+                                type="button"
+                                onClick={() => setShowTemplateSelector(false)}
+                                className="rounded-lg bg-gray-700 px-3 py-2 text-sm text-white hover:bg-gray-600"
+                            >
+                                Close
+                            </button>
+                        </div>
+                        <ProposalTemplates onUseTemplate={applyTemplate} />
+                    </div>
+                </div>
+            ) : null}
+
+            <NewProposalModal
+                isOpen={showNewProposalModal}
+                loading={loading}
+                selectedTemplateName={selectedTemplateName}
+                formData={newProposalForm}
+                onFieldChange={handleFormChange}
+                onSubmit={handleCreateProposal}
+                onOpenTemplateSelector={() => setShowTemplateSelector(true)}
+                onSaveAsTemplate={handleSaveAsTemplate}
+                onClose={() => {
+                    setShowNewProposalModal(false);
+                    resetNewProposalForm();
+                }}
             />
         </div>
     );
