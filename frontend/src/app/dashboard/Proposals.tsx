@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { ArrowUpRight, Clock, SearchX, ChevronDown } from 'lucide-react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { ArrowUpRight, Clock, SearchX, Plus, Loader2 } from 'lucide-react';
 import type { NewProposalFormData } from '../../components/modals/NewProposalModal';
 import NewProposalModal from '../../components/modals/NewProposalModal';
 import ProposalDetailModal from '../../components/modals/ProposalDetailModal';
@@ -12,11 +12,13 @@ import { useVaultContract } from '../../hooks/useVaultContract';
 import type { TokenBalance } from '../../components/TokenBalanceCard';
 import type { TokenInfo } from '../../constants/tokens';
 import { DEFAULT_TOKENS, getTokenIcon, formatTokenBalance } from '../../constants/tokens';
+import { useWallet } from '../../context/WalletContextProps';
 
 const CopyButton = ({ text }: { text: string }) => (
   <button 
     onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(text); }}
     className="p-1 hover:bg-gray-700 rounded text-gray-400"
+    aria-label="Copy to clipboard"
   >
     <Clock size={14} />
   </button>
@@ -24,13 +26,13 @@ const CopyButton = ({ text }: { text: string }) => (
 
 const StatusBadge = ({ status }: { status: string }) => {
   const colors: Record<string, string> = {
-    Pending: 'bg-yellow-500/10 text-yellow-500',
-    Approved: 'bg-green-500/10 text-green-500',
-    Rejected: 'bg-red-500/10 text-red-500',
-    Executed: 'bg-blue-500/10 text-blue-500',
+    Pending: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/30',
+    Approved: 'bg-green-500/10 text-green-500 border-green-500/30',
+    Rejected: 'bg-red-500/10 text-red-500 border-red-500/30',
+    Executed: 'bg-blue-500/10 text-blue-500 border-blue-500/30',
   };
   return (
-    <span className={`px-3 py-1 rounded-full text-xs font-medium ${colors[status] || 'bg-gray-500/10 text-gray-500'}`}>
+    <span className={`px-3 py-1 rounded-full text-xs font-medium border ${colors[status] || 'bg-gray-500/10 text-gray-500 border-gray-500/30'}`}>
       {status}
     </span>
   );
@@ -63,7 +65,8 @@ export interface Proposal {
 
 const Proposals: React.FC = () => {
   const { notify } = useToast();
-  const { rejectProposal, getTokenBalances, addCustomToken } = useVaultContract();
+  const { rejectProposal, getTokenBalances, addCustomToken ,loading: contractLoading, proposeTransfer} = useVaultContract();
+  const { isConnected, address } = useWallet();
 
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -74,6 +77,8 @@ const Proposals: React.FC = () => {
   const [tokenBalances, setTokenBalances] = useState<TokenBalance[]>([]);
   const [selectedTokenFilter, setSelectedTokenFilter] = useState<string>('all');
   const [showTokenFilterDropdown, setShowTokenFilterDropdown] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [activeFilters, setActiveFilters] = useState<FilterState>({
     search: '',
@@ -116,16 +121,17 @@ const Proposals: React.FC = () => {
     return ['all', ...Array.from(tokens)];
   }, [proposals]);
 
+  // Fetch proposals
   useEffect(() => {
     const fetchProposals = async () => {
       setLoading(true);
       try {
-        // Mock data with token symbols
+        // Mock data - in production, this would fetch from the contract
         const mockData: Proposal[] = [
           {
             id: '1',
-            proposer: '0x123...456',
-            recipient: '0xabc...def',
+            proposer: 'GABC...XYZ',
+            recipient: 'GDEF...UVW',
             amount: '100',
             token: 'NATIVE',
             tokenSymbol: 'XLM',
@@ -164,13 +170,14 @@ const Proposals: React.FC = () => {
         ];
         setProposals(mockData);
       } catch (error) {
-        console.error(error);
+        console.error('Failed to fetch proposals:', error);
+        notify('config_updated', 'Failed to load proposals', 'error');
       } finally {
         setLoading(false);
       }
     };
     fetchProposals();
-  }, []);
+  }, [notify]);
 
   // Filter proposals by token and other filters
   const filteredProposals = useMemo(() => {
@@ -221,8 +228,70 @@ const Proposals: React.FC = () => {
     });
   }, [proposals, activeFilters, selectedTokenFilter]);
 
-  const handleRejectConfirm = async () => {
+  // Handle proposal submission
+  const handleProposalSubmit = useCallback(async (event: React.FormEvent) => {
+    event.preventDefault();
+    
+    if (!isConnected || !address) {
+      setSubmitError('Please connect your wallet to create a proposal');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+
+    try {
+      // Convert amount to stroops (smallest unit)
+      const amountInStroops = Math.floor(parseFloat(newProposalForm.amount) * 10000000).toString();
+      
+      // Submit to contract
+      const txHash = await proposeTransfer(
+        newProposalForm.recipient,
+        newProposalForm.token,
+        amountInStroops,
+        newProposalForm.memo || ''
+      );
+
+      // Add new proposal to the list
+      const newProposal: Proposal = {
+        id: String(proposals.length + 1),
+        proposer: `${address.slice(0, 4)}...${address.slice(-4)}`,
+        recipient: `${newProposalForm.recipient.slice(0, 4)}...${newProposalForm.recipient.slice(-4)}`,
+        amount: newProposalForm.amount,
+        token: newProposalForm.token === 'NATIVE' ? 'XLM' : newProposalForm.token,
+        memo: newProposalForm.memo || 'No memo',
+        status: 'Pending',
+        approvals: 0,
+        threshold: 2,
+        createdAt: new Date().toISOString()
+      };
+
+      setProposals(prev => [newProposal, ...prev]);
+      
+      // Reset form and close modal
+      setNewProposalForm({
+        recipient: '',
+        token: 'NATIVE',
+        amount: '',
+        memo: '',
+      });
+      setShowNewProposalModal(false);
+      
+      notify('new_proposal', `Proposal created successfully! TX: ${txHash?.slice(0, 8)}...`, 'success');
+    } catch (err: unknown) {
+      console.error('Failed to create proposal:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to create proposal. Please try again.';
+      setSubmitError(errorMessage);
+      notify('new_proposal', errorMessage, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [isConnected, address, newProposalForm, proposals.length, proposeTransfer, notify]);
+
+  // Handle reject confirmation
+  const handleRejectConfirm = useCallback(async () => {
     if (!rejectingId) return;
+    
     try {
       await rejectProposal(Number(rejectingId));
       setProposals(prev => prev.map(p => p.id === rejectingId ? { ...p, status: 'Rejected' } : p));
@@ -234,7 +303,39 @@ const Proposals: React.FC = () => {
       setShowRejectModal(false);
       setRejectingId(null);
     }
-  };
+  }, [rejectingId, rejectProposal, notify]);
+
+  // Handle field change
+  const handleFieldChange = useCallback((field: keyof NewProposalFormData, value: string) => {
+    setNewProposalForm(prev => ({ ...prev, [field]: value }));
+    setSubmitError(null); // Clear error when user makes changes
+  }, []);
+
+  // Handle modal close
+  const handleModalClose = useCallback(() => {
+    if (!isSubmitting) {
+      setShowNewProposalModal(false);
+      setSubmitError(null);
+      setNewProposalForm({
+        recipient: '',
+        token: 'NATIVE',
+        amount: '',
+        memo: '',
+      });
+    }
+  }, [isSubmitting]);
+
+  // Handle template selector (placeholder)
+  const handleOpenTemplateSelector = useCallback(() => {
+    // TODO: Implement template selector modal
+    notify('config_updated', 'Template selector coming soon!', 'info');
+  }, [notify]);
+
+  // Handle save as template (placeholder)
+  const handleSaveAsTemplate = useCallback(() => {
+    // TODO: Implement save as template functionality
+    notify('config_updated', 'Template saved successfully!', 'success');
+  }, [notify]);
 
   const handleTokenSelect = (token: TokenInfo) => {
     setNewProposalForm(prev => ({ ...prev, token: token.address }));
@@ -402,6 +503,12 @@ const Proposals: React.FC = () => {
                     )}
                   </div>
                 </div>
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center py-12 px-4 bg-gray-800/20 rounded-3xl border border-dashed border-gray-700">
+                <SearchX size={48} className="text-gray-600 mb-4" />
+                <p className="text-gray-400 text-lg font-medium">No proposals match your filters</p>
+                <p className="text-gray-500 text-sm mt-2">Try adjusting your search criteria</p>
               </div>
             ))
           ) : (
@@ -420,6 +527,7 @@ const Proposals: React.FC = () => {
           )}
         </div>
 
+        {/* New Proposal Modal */}
         <NewProposalModal 
           isOpen={showNewProposalModal} 
           loading={loading} 
