@@ -1,7 +1,7 @@
 #![cfg(test)]
 
 use super::*;
-use crate::types::{AmountTier, TimeBasedThreshold, VelocityConfig};
+use crate::types::{AmountTier, DexConfig, SwapProposal, TimeBasedThreshold, VelocityConfig};
 use crate::{InitConfig, VaultDAO, VaultDAOClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},
@@ -1934,7 +1934,7 @@ fn test_swap_proposal_creation() {
     // Verify proposal
     let proposal = client.get_proposal(&proposal_id);
     assert_eq!(proposal.status, ProposalStatus::Pending);
-    assert!(proposal.swap_operation.is_some());
+    assert!(proposal.is_swap);
 }
 
 #[test]
@@ -2056,7 +2056,7 @@ fn test_add_liquidity_proposal() {
 
     let proposal = client.get_proposal(&proposal_id);
     assert_eq!(proposal.status, ProposalStatus::Pending);
-    assert!(proposal.swap_operation.is_some());
+    assert!(proposal.is_swap);
 }
 
 #[test]
