@@ -1,7 +1,9 @@
 #![cfg(test)]
 
 use super::*;
-use crate::types::{AmountTier, DexConfig, SwapProposal, TimeBasedThreshold, TransferDetails, VelocityConfig};
+use crate::types::{
+    AmountTier, DexConfig, SwapProposal, TimeBasedThreshold, TransferDetails, VelocityConfig,
+};
 use crate::{InitConfig, VaultDAO, VaultDAOClient};
 use soroban_sdk::{
     testutils::{Address as _, Ledger},

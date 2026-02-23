@@ -325,7 +325,7 @@ impl VaultDAO {
         // Pre-validate all transfers and calculate totals per token
         for i in 0..transfers.len() {
             let transfer = transfers.get(i).unwrap();
-            
+
             if transfer.amount <= 0 {
                 return Err(VaultError::InvalidAmount);
             }
@@ -367,7 +367,8 @@ impl VaultDAO {
         let insurance_config = storage::get_insurance_config(&env);
         let mut actual_insurance = insurance_amount;
         if insurance_config.enabled && total_amount >= insurance_config.min_amount {
-            let mut min_required = total_amount * insurance_config.min_insurance_bps as i128 / 10_000;
+            let mut min_required =
+                total_amount * insurance_config.min_insurance_bps as i128 / 10_000;
             let rep = storage::get_reputation(&env, &proposer);
             if rep.score >= 750 {
                 min_required /= 2;
@@ -376,7 +377,11 @@ impl VaultDAO {
                 return Err(VaultError::InsuranceInsufficient);
             }
         } else {
-            actual_insurance = if insurance_amount > 0 { insurance_amount } else { 0 };
+            actual_insurance = if insurance_amount > 0 {
+                insurance_amount
+            } else {
+                0
+            };
         }
 
         // Lock insurance if required (use first token in batch)
@@ -392,7 +397,7 @@ impl VaultDAO {
         // Create proposals
         let current_ledger = env.ledger().sequence() as u64;
         let mut proposal_ids = Vec::new(&env);
-        let insurance_per_proposal = if transfers.len() > 0 {
+        let insurance_per_proposal = if !transfers.is_empty() {
             actual_insurance / transfers.len() as i128
         } else {
             0
