@@ -71,7 +71,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialConfig, onSave, onCanc
       id: `field-${Date.now()}`,
       name: `field_${fields.length + 1}`,
       label: `Field ${fields.length + 1}`,
-      type: fieldType as any,
+      type: fieldType as FormField['type'],
       required: false,
       validationRules: [],
       order: fields.length + 1,
@@ -165,7 +165,7 @@ const FormBuilder: React.FC<FormBuilderProps> = ({ initialConfig, onSave, onCanc
         setFormDescription(config.description);
         setFields(config.fields);
         setIsDirty(true);
-      } catch (error) {
+      } catch {
         alert('Failed to import form. Invalid JSON format.');
       }
     };

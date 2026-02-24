@@ -150,7 +150,7 @@ const FormFieldEditor: FC<FormFieldEditorProps> = ({ field, onUpdate }: FormFiel
               <label className="block text-xs font-medium text-gray-400 mb-1">Width</label>
               <select
                 value={field.width ?? 'full'}
-                onChange={(e) => onUpdate({ width: e.target.value as any })}
+                onChange={(e) => onUpdate({ width: e.target.value as 'full' | 'half' | 'third' })}
                 className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded text-sm text-white focus:outline-none focus:border-purple-500"
               >
                 <option value="full">Full Width</option>
@@ -233,7 +233,7 @@ const FormFieldEditor: FC<FormFieldEditorProps> = ({ field, onUpdate }: FormFiel
                 <div className="flex items-center justify-between">
                   <select
                     value={rule.type}
-                    onChange={(e) => updateValidationRule(rule.id, { type: e.target.value as any })}
+                    onChange={(e) => updateValidationRule(rule.id, { type: e.target.value as ValidationRule['type'] })}
                     className="flex-1 px-2 py-1 bg-gray-700 border border-gray-600 rounded text-xs text-white focus:outline-none focus:border-purple-500"
                   >
                     <option value="required">Required</option>
