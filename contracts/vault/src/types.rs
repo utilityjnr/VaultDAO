@@ -28,6 +28,8 @@ pub struct InitConfig {
     pub velocity_limit: VelocityConfig,
     /// Threshold strategy configuration
     pub threshold_strategy: ThresholdStrategy,
+    /// Default voting deadline in ledgers (0 = no deadline)
+    pub default_voting_deadline: u64,
 }
 
 /// Vault configuration
@@ -54,6 +56,8 @@ pub struct Config {
     pub velocity_limit: VelocityConfig,
     /// Threshold strategy configuration
     pub threshold_strategy: ThresholdStrategy,
+    /// Default voting deadline in ledgers (0 = no deadline)
+    pub default_voting_deadline: u64,
 }
 
 /// Audit record for a cancelled proposal
@@ -229,6 +233,8 @@ pub struct Proposal {
     pub snapshot_signers: Vec<Address>,
     /// Flag indicating if this is a swap proposal
     pub is_swap: bool,
+    /// Ledger sequence when voting must complete (0 = no deadline)
+    pub voting_deadline: u64,
 }
 
 /// On-chain comment on a proposal
