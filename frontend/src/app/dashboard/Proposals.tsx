@@ -188,7 +188,7 @@ const Proposals: React.FC = () => {
     const unsubscribers = [
       subscribe('proposal_created', (data: Proposal) => {
         setProposals((prev) => [data, ...prev]);
-        notify('proposal_created', `New proposal #${data.id} created`, 'info');
+        notify('new_proposal', `New proposal #${data.id} created`, 'info');
       }),
       subscribe('proposal_updated', (data: { id: string; updates: Partial<Proposal> }) => {
         setProposals((prev) =>

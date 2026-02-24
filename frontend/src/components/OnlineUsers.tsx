@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Users, Circle } from 'lucide-react';
 import { useRealtime } from '../contexts/RealtimeContext';
 
