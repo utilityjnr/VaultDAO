@@ -3650,6 +3650,67 @@ fn test_retry_succeeds_after_balance_funded() {
 
 #[test]
 fn test_proposal_dependencies_enforce_execution_order() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_addr = sac.address();
+    let sac_admin_client = StellarAssetClient::new(&env, &token_addr);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &admin, &Role::Treasurer);
+
+    sac_admin_client.mint(&contract_id, &1000_i128);
+
+    let first_id = client.propose_transfer(
+        &admin,
+        &recipient,
+        &token_addr,
+        &100_i128,
+        &Symbol::new(&env, "first"),
+        &Priority::Normal,
+        &Vec::new(&env),
+        &ConditionLogic::And,
+        &0_i128,
+    );
+
+    let mut depends_on = Vec::new(&env);
+    depends_on.push_back(first_id);
+    let second_id = client.propose_transfer_with_deps(
+        &admin,
+        &recipient,
+        &token_addr,
+        &100_i128,
+        &Symbol::new(&env, "second"),
+        &Priority::Normal,
+        &Vec::new(&env),
+        &ConditionLogic::And,
+        &0_i128,
+        &depends_on,
+    );
+
+    client.approve_proposal(&admin, &first_id);
+    client.approve_proposal(&admin, &second_id);
+
+    let blocked = client.try_execute_proposal(&admin, &second_id);
+    assert_eq!(blocked.err(), Some(Ok(VaultError::ProposalNotApproved)));
+
+    client.execute_proposal(&admin, &first_id);
+    let ready = client.try_execute_proposal(&admin, &second_id);
+    assert!(ready.is_ok());
+}
+
 // ============================================================================
 // Cross-Vault Proposal Coordination Tests
 // ============================================================================
@@ -3750,58 +3811,70 @@ fn setup_dispute_env() -> (Env, Address, Address, Address, Address, Address, u64
     let client = VaultDAOClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
+    let signer1 = Address::generate(&env);
+    let signer2 = Address::generate(&env);
+    let arbitrator = Address::generate(&env);
     let recipient = Address::generate(&env);
-
-    let token_admin = Address::generate(&env);
-    let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
-    let token_addr = sac.address();
-    let sac_admin_client = StellarAssetClient::new(&env, &token_addr);
+    let token = Address::generate(&env);
 
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
+    signers.push_back(signer1.clone());
+    signers.push_back(signer2.clone());
 
-    let config = default_init_config(&env, signers, 1);
+    let config = InitConfig {
+        signers,
+        threshold: 2,
+        quorum: 0,
+        spending_limit: 10_000,
+        daily_limit: 50_000,
+        weekly_limit: 100_000,
+        timelock_threshold: 50_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
+        },
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
+    };
+
     client.initialize(&admin, &config);
-    client.set_role(&admin, &admin, &Role::Treasurer);
+    client.set_role(&admin, &signer1, &Role::Treasurer);
+    client.set_role(&admin, &signer2, &Role::Treasurer);
 
-    sac_admin_client.mint(&contract_id, &1000_i128);
+    // Set arbitrators
+    let mut arbs = Vec::new(&env);
+    arbs.push_back(arbitrator.clone());
+    client.set_arbitrators(&admin, &arbs);
 
-    let first_id = client.propose_transfer(
-        &admin,
+    // Create a pending proposal
+    let proposal_id = client.propose_transfer(
+        &signer1,
         &recipient,
-        &token_addr,
-        &100_i128,
-        &Symbol::new(&env, "first"),
+        &token,
+        &500,
+        &Symbol::new(&env, "test"),
         &Priority::Normal,
         &Vec::new(&env),
         &ConditionLogic::And,
-        &0_i128,
+        &0i128,
     );
 
-    let mut depends_on = Vec::new(&env);
-    depends_on.push_back(first_id);
-    let second_id = client.propose_transfer_with_deps(
-        &admin,
-        &recipient,
-        &token_addr,
-        &100_i128,
-        &Symbol::new(&env, "second"),
-        &Priority::Normal,
-        &Vec::new(&env),
-        &ConditionLogic::And,
-        &0_i128,
-        &depends_on,
-    );
-
-    client.approve_proposal(&admin, &first_id);
-    client.approve_proposal(&admin, &second_id);
-
-    let blocked = client.try_execute_proposal(&admin, &second_id);
-    assert_eq!(blocked.err(), Some(Ok(VaultError::ProposalNotApproved)));
-
-    client.execute_proposal(&admin, &first_id);
-    let ready = client.try_execute_proposal(&admin, &second_id);
-    assert!(ready.is_ok());
+    (
+        env,
+        contract_id,
+        admin,
+        signer1,
+        signer2,
+        arbitrator,
+        proposal_id,
+    )
 }
 
 #[test]
@@ -3918,70 +3991,6 @@ fn test_get_executable_proposals_respects_dependencies() {
 
     let executable_after = client.get_executable_proposals();
     assert!(executable_after.contains(&second_id));
-    let signer1 = Address::generate(&env);
-    let signer2 = Address::generate(&env);
-    let arbitrator = Address::generate(&env);
-    let recipient = Address::generate(&env);
-    let token = Address::generate(&env);
-
-    let mut signers = Vec::new(&env);
-    signers.push_back(admin.clone());
-    signers.push_back(signer1.clone());
-    signers.push_back(signer2.clone());
-
-    let config = InitConfig {
-        signers,
-        threshold: 2,
-        quorum: 0,
-        spending_limit: 10_000,
-        daily_limit: 50_000,
-        weekly_limit: 100_000,
-        timelock_threshold: 50_000,
-        timelock_delay: 100,
-        velocity_limit: VelocityConfig {
-            limit: 100,
-            window: 3600,
-        },
-        threshold_strategy: ThresholdStrategy::Fixed,
-        default_voting_deadline: 0,
-        retry_config: RetryConfig {
-            enabled: false,
-            max_retries: 0,
-            initial_backoff_ledgers: 0,
-        },
-    };
-
-    client.initialize(&admin, &config);
-    client.set_role(&admin, &signer1, &Role::Treasurer);
-    client.set_role(&admin, &signer2, &Role::Treasurer);
-
-    // Set arbitrators
-    let mut arbs = Vec::new(&env);
-    arbs.push_back(arbitrator.clone());
-    client.set_arbitrators(&admin, &arbs);
-
-    // Create a pending proposal
-    let proposal_id = client.propose_transfer(
-        &signer1,
-        &recipient,
-        &token,
-        &500,
-        &Symbol::new(&env, "test"),
-        &Priority::Normal,
-        &Vec::new(&env),
-        &ConditionLogic::And,
-        &0i128,
-    );
-
-    (
-        env,
-        contract_id,
-        admin,
-        signer1,
-        signer2,
-        arbitrator,
-        proposal_id,
-    )
 }
 
 #[test]

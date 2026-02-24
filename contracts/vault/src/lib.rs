@@ -3056,6 +3056,7 @@ impl VaultDAO {
             gas_used: 0,
             snapshot_ledger: current_ledger,
             snapshot_signers: config.signers.clone(),
+            depends_on: Vec::new(&env),
             is_swap: false,
             voting_deadline: if config.default_voting_deadline > 0 {
                 current_ledger + config.default_voting_deadline
