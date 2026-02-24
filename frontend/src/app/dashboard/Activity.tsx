@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useWallet } from '../../context/WalletContextProps';
+import { useRealtime } from '../../contexts/RealtimeContext';
 import type { ActivityLike } from '../../types/analytics';
 import ExportModal, { type ExportDatasets } from '../../components/modals/ExportModal';
 import { saveExportHistoryItem } from '../../utils/exportHistory';
@@ -73,9 +74,23 @@ const TYPE_LABELS: Record<string, string> = {
 
 const Activity: React.FC = () => {
   const { address } = useWallet();
-  const [activities] = useState<ActivityLike[]>(() => getMockActivities());
+  const { subscribe, updatePresence } = useRealtime();
+  const [activities, setActivities] = useState<ActivityLike[]>(() => getMockActivities());
   const [showExportModal, setShowExportModal] = useState(false);
   const [activeTab, setActiveTab] = useState<ActivityTab>('activity');
+
+  // Subscribe to real-time activity updates
+  useEffect(() => {
+    updatePresence('online', 'Activity');
+
+    const unsubscribe = subscribe('activity_new', (data: ActivityLike) => {
+      setActivities((prev) => [data, ...prev]);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [subscribe, updatePresence]);
 
   const exportDatasets: ExportDatasets = useMemo(() => {
     const activityRows = activities.map((a) => ({

@@ -10,6 +10,7 @@ import ProposalFilters, { type FilterState } from '../../components/proposals/Pr
 import { useToast } from '../../hooks/useToast';
 import { useVaultContract } from '../../hooks/useVaultContract';
 import { useWallet } from '../../context/WalletContextProps';
+import { useRealtime } from '../../contexts/RealtimeContext';
 import { reportError } from '../../components/ErrorReporting';
 import { parseError } from '../../utils/errorParser';
 import type { TokenInfo } from '../../constants/tokens';
@@ -63,6 +64,7 @@ const Proposals: React.FC = () => {
   const { notify } = useToast();
   const { rejectProposal, approveProposal, getTokenBalances } = useVaultContract();
   const { address } = useWallet();
+  const { subscribe, updatePresence } = useRealtime();
 
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [loading, setLoading] = useState(false);
@@ -178,6 +180,51 @@ const Proposals: React.FC = () => {
     };
     fetchProposals();
   }, []);
+
+  // Subscribe to real-time proposal updates
+  useEffect(() => {
+    updatePresence('online', 'Proposals');
+
+    const unsubscribers = [
+      subscribe('proposal_created', (data: Proposal) => {
+        setProposals((prev) => [data, ...prev]);
+        notify('proposal_created', `New proposal #${data.id} created`, 'info');
+      }),
+      subscribe('proposal_updated', (data: { id: string; updates: Partial<Proposal> }) => {
+        setProposals((prev) =>
+          prev.map((p) => (p.id === data.id ? { ...p, ...data.updates } : p))
+        );
+      }),
+      subscribe('proposal_approved', (data: { id: string; approver: string }) => {
+        setProposals((prev) =>
+          prev.map((p) => {
+            if (p.id === data.id) {
+              const newApprovals = p.approvals + 1;
+              const newApprovedBy = [...p.approvedBy, data.approver];
+              return {
+                ...p,
+                approvals: newApprovals,
+                approvedBy: newApprovedBy,
+                status: newApprovals >= p.threshold ? 'Approved' : p.status,
+              };
+            }
+            return p;
+          })
+        );
+        notify('proposal_approved', `Proposal #${data.id} approved`, 'success');
+      }),
+      subscribe('proposal_rejected', (data: { id: string }) => {
+        setProposals((prev) =>
+          prev.map((p) => (p.id === data.id ? { ...p, status: 'Rejected' } : p))
+        );
+        notify('proposal_rejected', `Proposal #${data.id} rejected`, 'error');
+      }),
+    ];
+
+    return () => {
+      unsubscribers.forEach((unsub) => unsub());
+    };
+  }, [subscribe, updatePresence, notify]);
 
   // Filter proposals by token and other filters
   const filteredProposals = useMemo(() => {

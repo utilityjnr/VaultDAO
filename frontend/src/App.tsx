@@ -11,6 +11,10 @@ import Settings from './app/dashboard/Settings';
 import Templates from './app/dashboard/Templates';
 import RecurringPayments from './app/dashboard/RecurringPayments';
 import ErrorDashboard from './components/ErrorDashboard';
+import OnlineUsers from './components/OnlineUsers';
+import LiveUpdates from './components/LiveUpdates';
+import RealtimeNotifications from './components/RealtimeNotifications';
+import TypingIndicator from './components/TypingIndicator';
 
 function App() {
   return (
@@ -31,6 +35,12 @@ function App() {
         {/* Toast Demo Route */}
         {/* <Route path="/toast-demo" element={<ToastDemo />} /> */}
       </Routes>
+      
+      {/* Real-time components */}
+      <OnlineUsers />
+      <LiveUpdates />
+      <RealtimeNotifications />
+      <TypingIndicator />
     </BrowserRouter>
   );
 }
