@@ -97,6 +97,7 @@ impl VaultDAO {
             timelock_delay: config.timelock_delay,
             velocity_limit: config.velocity_limit,
             threshold_strategy: config.threshold_strategy,
+            default_voting_deadline: config.default_voting_deadline,
         };
 
         // Store state
@@ -259,6 +260,11 @@ impl VaultDAO {
             snapshot_ledger: current_ledger,
             snapshot_signers: config.signers.clone(),
             is_swap: false,
+            voting_deadline: if config.default_voting_deadline > 0 {
+                current_ledger + config.default_voting_deadline
+            } else {
+                0
+            },
         };
 
         storage::set_proposal(&env, &proposal);
@@ -459,6 +465,11 @@ impl VaultDAO {
                 snapshot_ledger: current_ledger,
                 snapshot_signers: config.signers.clone(),
                 is_swap: false,
+                voting_deadline: if config.default_voting_deadline > 0 {
+                    current_ledger + config.default_voting_deadline
+                } else {
+                    0
+                },
             };
 
             storage::set_proposal(&env, &proposal);
@@ -541,6 +552,15 @@ impl VaultDAO {
             proposal.status = ProposalStatus::Expired;
             storage::set_proposal(&env, &proposal);
             return Err(VaultError::ProposalExpired);
+        }
+
+        // Check voting deadline
+        if proposal.voting_deadline > 0 && current_ledger > proposal.voting_deadline {
+            proposal.status = ProposalStatus::Rejected;
+            storage::set_proposal(&env, &proposal);
+            storage::metrics_on_rejection(&env);
+            events::emit_proposal_deadline_rejected(&env, proposal_id, proposal.voting_deadline);
+            return Err(VaultError::VotingDeadlinePassed);
         }
 
         // Prevent double-approval or abstaining then approving
@@ -1039,6 +1059,42 @@ impl VaultDAO {
         Ok(())
     }
 
+    /// Extend voting deadline for a proposal (admin only)
+    pub fn extend_voting_deadline(
+        env: Env,
+        admin: Address,
+        proposal_id: u64,
+        new_deadline: u64,
+    ) -> Result<(), VaultError> {
+        admin.require_auth();
+
+        let role = storage::get_role(&env, &admin);
+        if role != Role::Admin {
+            return Err(VaultError::Unauthorized);
+        }
+
+        let mut proposal = storage::get_proposal(&env, proposal_id)?;
+
+        if proposal.status != ProposalStatus::Pending {
+            return Err(VaultError::ProposalNotPending);
+        }
+
+        let old_deadline = proposal.voting_deadline;
+        proposal.voting_deadline = new_deadline;
+        storage::set_proposal(&env, &proposal);
+        storage::extend_instance_ttl(&env);
+
+        events::emit_voting_deadline_extended(
+            &env,
+            proposal_id,
+            old_deadline,
+            new_deadline,
+            &admin,
+        );
+
+        Ok(())
+    }
+
     // ========================================================================
     // View Functions
     // ========================================================================
@@ -1404,7 +1460,7 @@ impl VaultDAO {
 
         // Only author can edit
         if comment.author != author {
-            return Err(VaultError::NotCommentAuthor);
+            return Err(VaultError::Unauthorized);
         }
 
         comment.text = new_text;
@@ -2133,6 +2189,11 @@ impl VaultDAO {
             snapshot_ledger: current_ledger as u64,
             snapshot_signers: config.signers.clone(),
             is_swap: true,
+            voting_deadline: if config.default_voting_deadline > 0 {
+                current_ledger as u64 + config.default_voting_deadline
+            } else {
+                0
+            },
         };
 
         storage::set_proposal(&env, &proposal);

@@ -32,6 +32,7 @@ fn default_init_config(
             window: 3600,
         },
         threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
     }
 }
 
@@ -59,6 +60,7 @@ fn test_multisig_approval() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -124,6 +126,7 @@ fn test_unauthorized_proposal() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -176,6 +179,7 @@ fn test_timelock_violation() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -237,6 +241,7 @@ fn test_priority_levels() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -326,6 +331,7 @@ fn test_get_proposals_by_priority() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -393,6 +399,7 @@ fn test_change_priority_unauthorized() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -443,6 +450,7 @@ fn test_comment_functionality() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -494,7 +502,7 @@ fn test_comment_functionality() {
     assert_eq!(updated_comment.text, new_text);
 
     let res = client.try_edit_comment(&admin, &comment_id, &Symbol::new(&env, "hack"));
-    assert_eq!(res.err(), Some(Ok(VaultError::NotCommentAuthor)));
+    assert_eq!(res.err(), Some(Ok(VaultError::Unauthorized)));
 }
 
 #[test]
@@ -519,6 +527,7 @@ fn test_blacklist_mode() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -588,6 +597,7 @@ fn test_abstention_does_not_count_toward_threshold() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -652,6 +662,7 @@ fn test_list_management() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -701,6 +712,7 @@ fn test_cannot_abstain_after_voting() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -754,6 +766,7 @@ fn test_cannot_abstain_twice() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -808,6 +821,7 @@ fn test_velocity_limit_enforcement() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -881,6 +895,7 @@ fn test_verify_attachment() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -932,6 +947,7 @@ fn test_remove_attachment() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -989,6 +1005,7 @@ fn test_attachment_unauthorized() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1043,6 +1060,7 @@ fn test_attachment_duplicate() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1097,6 +1115,7 @@ fn test_attachment_invalid_hash() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1148,6 +1167,7 @@ fn test_admin_can_add_attachment() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1201,6 +1221,7 @@ fn test_fixed_threshold_strategy() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1263,6 +1284,7 @@ fn test_percentage_threshold_strategy() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1332,6 +1354,7 @@ fn test_time_based_threshold_strategy() {
         signers,
         threshold: 3,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1398,6 +1421,7 @@ fn test_condition_balance_above() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1457,6 +1481,7 @@ fn test_condition_date_after() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1527,6 +1552,7 @@ fn test_condition_multiple_and_logic() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1603,6 +1629,7 @@ fn test_condition_multiple_or_logic() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1672,6 +1699,7 @@ fn test_condition_no_conditions() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1730,6 +1758,7 @@ fn test_dex_config_setup() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -1785,6 +1814,7 @@ fn test_swap_proposal_creation() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 10000,
         daily_limit: 50000,
         weekly_limit: 100000,
@@ -1846,6 +1876,7 @@ fn test_dex_not_enabled_error() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 10000,
         daily_limit: 50000,
         weekly_limit: 100000,
@@ -1894,6 +1925,7 @@ fn test_batch_propose_multi_token() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 5_000,
         daily_limit: 20_000,
         weekly_limit: 50_000,
@@ -1966,6 +1998,7 @@ fn test_batch_propose_exceeds_max_size() {
         signers,
         threshold: 2,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 5_000,
         daily_limit: 100_000,
         weekly_limit: 500_000,
@@ -2028,6 +2061,7 @@ fn test_quorum_disabled_behaves_like_fixed_threshold() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -2100,6 +2134,7 @@ fn test_quorum_blocks_approval_until_satisfied() {
             window: 3600,
         },
         threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
     };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
@@ -2183,6 +2218,7 @@ fn test_abstentions_count_toward_quorum_but_not_threshold() {
             window: 3600,
         },
         threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
     };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
@@ -2266,6 +2302,7 @@ fn test_get_quorum_status() {
             window: 3600,
         },
         threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
     };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
@@ -2324,6 +2361,7 @@ fn test_update_quorum() {
         signers,
         threshold: 1,
         quorum: 0,
+        default_voting_deadline: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -2384,6 +2422,7 @@ fn test_quorum_satisfied_by_approvals_alone() {
             window: 3600,
         },
         threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
     };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
@@ -2442,6 +2481,7 @@ fn test_initialize_rejects_quorum_too_high() {
             window: 3600,
         },
         threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
     };
 
     let result = client.try_initialize(&admin, &config);

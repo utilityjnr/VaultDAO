@@ -341,3 +341,29 @@ pub fn emit_metrics_updated(
         (executed, rejected, expired, success_rate_bps),
     );
 }
+
+// ============================================================================
+// Voting Deadline Events
+// ============================================================================
+
+/// Emit when a proposal's voting deadline is extended
+pub fn emit_voting_deadline_extended(
+    env: &Env,
+    proposal_id: u64,
+    old_deadline: u64,
+    new_deadline: u64,
+    admin: &Address,
+) {
+    env.events().publish(
+        (Symbol::new(env, "deadline_extended"), proposal_id),
+        (old_deadline, new_deadline, admin.clone()),
+    );
+}
+
+/// Emit when a proposal is auto-rejected due to voting deadline
+pub fn emit_proposal_deadline_rejected(env: &Env, proposal_id: u64, deadline: u64) {
+    env.events().publish(
+        (Symbol::new(env, "deadline_rejected"), proposal_id),
+        deadline,
+    );
+}

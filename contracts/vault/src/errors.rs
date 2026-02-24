@@ -30,6 +30,7 @@ pub enum VaultError {
     ProposalAlreadyExecuted = 23,
     ProposalExpired = 24,
     ProposalAlreadyCancelled = 25,
+    VotingDeadlinePassed = 26,
 
     // Voting
     AlreadyApproved = 30,
@@ -92,4 +93,7 @@ pub enum VaultError {
     ChainNotSupported = 173,
     BridgeAmountExceedsLimit = 174,
     ExceedsBridgeLimit = 175,
+
+    // Reputation
+    ReputationTooLow = 180,
 }
