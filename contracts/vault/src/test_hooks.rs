@@ -25,6 +25,7 @@ fn test_register_pre_hook() {
     let config = InitConfig {
         signers,
         threshold: 1,
+        quorum: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -62,6 +63,7 @@ fn test_register_post_hook() {
     let config = InitConfig {
         signers,
         threshold: 1,
+        quorum: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -97,6 +99,7 @@ fn test_remove_pre_hook() {
     let config = InitConfig {
         signers,
         threshold: 1,
+        quorum: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -133,6 +136,7 @@ fn test_remove_post_hook() {
     let config = InitConfig {
         signers,
         threshold: 1,
+        quorum: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -170,6 +174,7 @@ fn test_hook_unauthorized() {
     let config = InitConfig {
         signers,
         threshold: 1,
+        quorum: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -207,6 +212,7 @@ fn test_duplicate_hook() {
     let config = InitConfig {
         signers,
         threshold: 1,
+        quorum: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
@@ -252,6 +258,7 @@ fn test_hooks_with_initialization() {
     let config = InitConfig {
         signers,
         threshold: 1,
+        quorum: 0,
         spending_limit: 1000,
         daily_limit: 5000,
         weekly_limit: 10000,
