@@ -5959,4 +5959,3 @@ fn test_escrow_basic_flow() {
     // Test that escrow types and functions compile correctly
     // Full integration tested in production deploy
 }
-
