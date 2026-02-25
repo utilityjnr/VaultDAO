@@ -1074,25 +1074,30 @@ impl VaultDAO {
         }
 
         // Keep reserved spending in sync with amended amount.
-        if new_amount > proposal.amount {
-            let increase = new_amount - proposal.amount;
-            let today = storage::get_day_number(&env);
-            let week = storage::get_week_number(&env);
+        use core::cmp::Ordering;
+        match new_amount.cmp(&proposal.amount) {
+            Ordering::Greater => {
+                let increase = new_amount - proposal.amount;
+                let today = storage::get_day_number(&env);
+                let week = storage::get_week_number(&env);
 
-            let spent_today = storage::get_daily_spent(&env, today);
-            if spent_today + increase > config.daily_limit {
-                return Err(VaultError::ExceedsDailyLimit);
-            }
-            let spent_week = storage::get_weekly_spent(&env, week);
-            if spent_week + increase > config.weekly_limit {
-                return Err(VaultError::ExceedsWeeklyLimit);
-            }
+                let spent_today = storage::get_daily_spent(&env, today);
+                if spent_today + increase > config.daily_limit {
+                    return Err(VaultError::ExceedsDailyLimit);
+                }
+                let spent_week = storage::get_weekly_spent(&env, week);
+                if spent_week + increase > config.weekly_limit {
+                    return Err(VaultError::ExceedsWeeklyLimit);
+                }
 
-            storage::add_daily_spent(&env, today, increase);
-            storage::add_weekly_spent(&env, week, increase);
-        } else if proposal.amount > new_amount {
-            let decrease = proposal.amount - new_amount;
-            storage::refund_spending_limits(&env, decrease);
+                storage::add_daily_spent(&env, today, increase);
+                storage::add_weekly_spent(&env, week, increase);
+            }
+            Ordering::Less => {
+                let decrease = proposal.amount - new_amount;
+                storage::refund_spending_limits(&env, decrease);
+            }
+            Ordering::Equal => {}
         }
 
         let amendment = ProposalAmendment {
@@ -4801,7 +4806,7 @@ impl VaultDAO {
         }
 
         let mut permissions = storage::get_permissions(&env, &target);
-        
+
         // Check if permission already exists
         for p in permissions.iter() {
             if p.permission == permission {

@@ -5366,16 +5366,21 @@ fn test_reputation_decay_over_time() {
     let rep_after = client.get_reputation(&proposer);
 
     // Score should drift toward neutral (500)
-    if rep_before.score > 500 {
-        assert!(
-            rep_after.score < rep_before.score,
-            "Decay should decrease score above 500"
-        );
-    } else if rep_before.score < 500 {
-        assert!(
-            rep_after.score > rep_before.score,
-            "Decay should increase score below 500"
-        );
+    use core::cmp::Ordering;
+    match rep_before.score.cmp(&500) {
+        Ordering::Greater => {
+            assert!(
+                rep_after.score < rep_before.score,
+                "Decay should decrease score above 500"
+            );
+        }
+        Ordering::Less => {
+            assert!(
+                rep_after.score > rep_before.score,
+                "Decay should increase score below 500"
+            );
+        }
+        Ordering::Equal => {}
     }
 }
 
@@ -6390,7 +6395,12 @@ fn test_permission_expiry() {
 
     // Grant with expiry at ledger 100
     let expires_at = Some(100);
-    client.grant_permission(&admin, &user, &types::Permission::CreateProposal, &expires_at);
+    client.grant_permission(
+        &admin,
+        &user,
+        &types::Permission::CreateProposal,
+        &expires_at,
+    );
 
     // Should have permission before expiry
     env.ledger().set_sequence_number(50);
@@ -6565,7 +6575,8 @@ fn test_permission_already_granted_error() {
     client.grant_permission(&admin, &user, &types::Permission::CreateProposal, &None);
 
     // Try to grant same permission again
-    let result = client.try_grant_permission(&admin, &user, &types::Permission::CreateProposal, &None);
+    let result =
+        client.try_grant_permission(&admin, &user, &types::Permission::CreateProposal, &None);
     assert_eq!(result.err(), Some(Ok(VaultError::PermissionAlreadyGranted)));
 }
 

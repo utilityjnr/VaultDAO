@@ -1109,18 +1109,20 @@ pub fn get_delegated_permission(
     delegator: &Address,
     permission: u32,
 ) -> Option<DelegatedPermission> {
-    env.storage().persistent().get(&DataKey::DelegatedPermission(
-        delegatee.clone(),
-        delegator.clone(),
-        permission,
-    ))
+    env.storage()
+        .persistent()
+        .get(&DataKey::DelegatedPermission(
+            delegatee.clone(),
+            delegator.clone(),
+            permission,
+        ))
 }
 
 pub fn set_delegated_permission(env: &Env, delegation: &DelegatedPermission) {
     let key = DataKey::DelegatedPermission(
         delegation.delegatee.clone(),
         delegation.delegator.clone(),
-        delegation.permission.clone() as u32,
+        delegation.permission as u32,
     );
     env.storage().persistent().set(&key, delegation);
     env.storage()
