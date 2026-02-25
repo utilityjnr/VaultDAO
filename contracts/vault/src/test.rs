@@ -1,8 +1,8 @@
 #![cfg(test)]
 
 use super::*;
-use crate::{
-    DexConfig, RetryConfig, StreamStatus, SubscriptionStatus, SubscriptionTier, SwapProposal,
+use crate::types::{
+    DexConfig, ExecutionFeeEstimate, RetryConfig, StreamStatus, SubscriptionStatus, SubscriptionTier, SwapProposal,
     TimeBasedThreshold, TransferDetails, VelocityConfig,
 };
 use crate::{InitConfig, VaultDAO, VaultDAOClient};
@@ -6440,3 +6440,210 @@ fn test_stream_cancel() {
 }
 
 // ============================================================================
+#[test]
+fn test_estimate_execution_fee_breakdown_and_storage() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let sender = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    // Register token
+    let token_admin = Address::generate(&env);
+    let token_id = env.register_stellar_asset_contract_v2(token_admin);
+    let token_client = token::Client::new(&env, &token_id.address());
+    let token_admin_client = StellarAssetClient::new(&env, &token_id.address());
+    let token_id_addr = token_id.address();
+
+    // Initialize vault
+    let signers = Vec::from_array(&env, [admin.clone()]);
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Give sender some tokens
+    token_admin_client.mint(&sender, &1000);
+    assert_eq!(token_client.balance(&sender), 1000);
+
+    // 1. Create stream: 100 tokens over 100 seconds (rate = 1 token/sec)
+    let stream_id = client.create_stream(&sender, &recipient, &token_id_addr, &100, &100);
+    assert_eq!(token_client.balance(&sender), 900);
+    assert_eq!(token_client.balance(&contract_id), 100);
+
+    // 2. Wait 10 seconds
+    env.ledger().with_mut(|li| li.timestamp += 10);
+
+    // Check stream status
+    let stream = client.get_stream(&stream_id);
+    assert_eq!(stream.status, StreamStatus::Active);
+
+    // 3. Claim: should be 10 tokens
+    client.claim_stream(&recipient, &stream_id);
+    assert_eq!(token_client.balance(&recipient), 10);
+
+    let stream = client.get_stream(&stream_id);
+    assert_eq!(stream.claimed_amount, 10);
+
+    // 4. Pause stream
+    client.pause_stream(&sender, &stream_id);
+    let stream = client.get_stream(&stream_id);
+    assert_eq!(stream.status, StreamStatus::Paused);
+    assert_eq!(stream.accumulated_seconds, 10);
+
+    // 5. Wait 20 seconds while paused
+    env.ledger().with_mut(|li| li.timestamp += 20);
+
+    // Claim should give 0 more tokens
+    client.claim_stream(&recipient, &stream_id);
+    assert_eq!(token_client.balance(&recipient), 10);
+
+    // 6. Resume stream
+    client.resume_stream(&sender, &stream_id);
+
+    // 7. Wait 10 seconds
+    env.ledger().with_mut(|li| li.timestamp += 10);
+
+    // Total active time = 10 (before pause) + 10 (after resume) = 20
+    // Total claimable = 20. Claimed = 10. New claim = 10.
+    client.claim_stream(&recipient, &stream_id);
+    assert_eq!(token_client.balance(&recipient), 20);
+
+    // 8. Wait till end (another 80 seconds)
+    env.ledger().with_mut(|li| li.timestamp += 80);
+
+    client.claim_stream(&recipient, &stream_id);
+    assert_eq!(token_client.balance(&recipient), 100);
+
+    let stream = client.get_stream(&stream_id);
+    assert_eq!(stream.status, StreamStatus::Completed);
+}
+
+
+
+#[test]
+fn test_estimate_execution_fee_includes_insurance_step() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let treasurer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+
+    // Register a proper Stellar Asset Contract for the token
+    let token_admin = Address::generate(&env);
+    let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token = sac.address();
+    let sac_admin_client = StellarAssetClient::new(&env, &token);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+    signers.push_back(treasurer.clone());
+
+    let config = default_init_config(&env, signers, 2);
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &treasurer, &Role::Treasurer);
+    client.set_gas_config(
+        &admin,
+        &GasConfig {
+            enabled: true,
+            default_gas_limit: 10_000,
+            base_cost: 50,
+            condition_cost: 10,
+        },
+    );
+
+    // Mint tokens to the treasurer so they can lock insurance
+    sac_admin_client.mint(&treasurer, &1000);
+
+    let mut conditions = Vec::new(&env);
+    conditions.push_back(Condition::DateAfter(200));
+
+    let proposal_id = client.propose_transfer(
+        &treasurer,
+        &recipient,
+        &token,
+        &100,
+        &Symbol::new(&env, "ins_fee"),
+        &Priority::Normal,
+        &conditions,
+        &ConditionLogic::And,
+        &25i128,
+    );
+
+    let estimate = client.estimate_execution_fee(&proposal_id);
+    assert_eq!(estimate.operation_count, 3);
+    assert_eq!(estimate.base_fee, 50);
+    assert_eq!(estimate.resource_fee, 30);
+    assert_eq!(estimate.total_fee, 80);
+}
+
+#[test]
+fn test_estimate_execution_fee_refreshes_after_gas_config_update() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let treasurer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+    signers.push_back(treasurer.clone());
+
+    let config = default_init_config(&env, signers, 2);
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &treasurer, &Role::Treasurer);
+
+    client.set_gas_config(
+        &admin,
+        &GasConfig {
+            enabled: true,
+            default_gas_limit: 10_000,
+            base_cost: 100,
+            condition_cost: 20,
+        },
+    );
+
+    let proposal_id = client.propose_transfer(
+        &treasurer,
+        &recipient,
+        &token,
+        &100,
+        &Symbol::new(&env, "refresh"),
+        &Priority::Normal,
+        &Vec::new(&env),
+        &ConditionLogic::And,
+        &0i128,
+    );
+
+    let initial = client.estimate_execution_fee(&proposal_id);
+    assert_eq!(initial.total_fee, 120);
+
+    client.set_gas_config(
+        &admin,
+        &GasConfig {
+            enabled: true,
+            default_gas_limit: 10_000,
+            base_cost: 200,
+            condition_cost: 40,
+        },
+    );
+
+    let refreshed = client.estimate_execution_fee(&proposal_id);
+    assert_eq!(refreshed.total_fee, 240);
+
+    let stored = client
+        .get_execution_fee_estimate(&proposal_id)
+        .expect("stored estimate should be refreshed");
+    assert_eq!(stored.total_fee, refreshed.total_fee);
+}
