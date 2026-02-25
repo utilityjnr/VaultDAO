@@ -24,7 +24,7 @@ use crate::errors::VaultError;
 use crate::types::{
     Comment, Config, CrossVaultConfig, CrossVaultProposal, Dispute, Escrow, GasConfig,
     InsuranceConfig, ListMode, NotificationPreferences, Proposal, ProposalAmendment,
-    ProposalTemplate, Reputation, RetryState, Role, VaultMetrics, VelocityConfig,
+    ProposalTemplate, RecoveryProposal, Reputation, RetryState, Role, VaultMetrics, VelocityConfig,
 };
 
 /// Storage key definitions
@@ -117,6 +117,10 @@ pub enum DataKey {
     FunderEscrows(Address),
     /// Escrow IDs by recipient address -> Vec<u64>
     RecipientEscrows(Address),
+    /// Recovery proposal by ID -> RecoveryProposal
+    RecoveryProposal(u64),
+    /// Next recovery proposal ID counter -> u64
+    NextRecoveryId,
     /// Insurance pool accumulated slashed funds (Token Address) -> i128
     InsurancePool(Address),
     /// Batch transaction by ID -> BatchTransaction
@@ -1139,4 +1143,38 @@ pub fn set_rollback_state(env: &Env, batch_id: u64, state: &Vec<(Address, i128)>
     env.storage()
         .persistent()
         .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL);
+}
+
+// ============================================================================
+// Wallet Recovery (Issue: feature/wallet-recovery)
+// ============================================================================
+
+pub fn get_recovery_proposal(env: &Env, id: u64) -> Result<RecoveryProposal, VaultError> {
+    env.storage()
+        .persistent()
+        .get(&DataKey::RecoveryProposal(id))
+        .ok_or(VaultError::ProposalNotFound)
+}
+
+pub fn set_recovery_proposal(env: &Env, proposal: &RecoveryProposal) {
+    let key = DataKey::RecoveryProposal(proposal.id);
+    env.storage().persistent().set(&key, proposal);
+    env.storage()
+        .persistent()
+        .extend_ttl(&key, PERSISTENT_TTL_THRESHOLD, PERSISTENT_TTL);
+}
+
+pub fn get_next_recovery_id(env: &Env) -> u64 {
+    env.storage()
+        .instance()
+        .get(&DataKey::NextRecoveryId)
+        .unwrap_or(1)
+}
+
+pub fn increment_recovery_id(env: &Env) -> u64 {
+    let id = get_next_recovery_id(env);
+    env.storage()
+        .instance()
+        .set(&DataKey::NextRecoveryId, &(id + 1));
+    id
 }

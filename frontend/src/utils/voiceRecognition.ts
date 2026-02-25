@@ -22,8 +22,8 @@ class VoiceRecognitionService {
 
   constructor() {
     if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      this.recognition = new SpeechRecognition();
+      const SpeechRecognitionClass = (window as Record<string, unknown>).SpeechRecognition || (window as Record<string, unknown>).webkitSpeechRecognition as typeof SpeechRecognition;
+      this.recognition = new SpeechRecognitionClass();
       this.synthesis = window.speechSynthesis;
     }
   }
