@@ -5894,7 +5894,7 @@ fn test_insurance_posting_and_refund() {
     let proposer = Address::generate(&env);
     let signer2 = Address::generate(&env);
     let recipient = Address::generate(&env);
-    
+
     let token_admin = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_addr = sac.address();
@@ -5914,7 +5914,10 @@ fn test_insurance_posting_and_refund() {
         weekly_limit: 10000,
         timelock_threshold: 5000,
         timelock_delay: 100,
-        velocity_limit: VelocityConfig { limit: 1000, window: 3600 },
+        velocity_limit: VelocityConfig {
+            limit: 1000,
+            window: 3600,
+        },
         threshold_strategy: ThresholdStrategy::Fixed,
         default_voting_deadline: 0,
         retry_config: RetryConfig {
@@ -5929,7 +5932,7 @@ fn test_insurance_posting_and_refund() {
 
     // Fund vault and proposer
     sac_admin_client.mint(&contract_id, &5000); // For the transfer itself
-    sac_admin_client.mint(&proposer, &1000);    // For proposing (insurance)
+    sac_admin_client.mint(&proposer, &1000); // For proposing (insurance)
 
     // Enable insurance: minimum 100 tokens, or 5% (500 bps)
     let ins_config = InsuranceConfig {
@@ -5992,7 +5995,7 @@ fn test_insurance_slashing_on_rejection() {
     let admin = Address::generate(&env);
     let proposer = Address::generate(&env);
     let recipient = Address::generate(&env);
-    
+
     let token_admin = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_addr = sac.address();
@@ -6011,21 +6014,31 @@ fn test_insurance_slashing_on_rejection() {
         weekly_limit: 10000,
         timelock_threshold: 5000,
         timelock_delay: 100,
-        velocity_limit: VelocityConfig { limit: 1000, window: 3600 },
+        velocity_limit: VelocityConfig {
+            limit: 1000,
+            window: 3600,
+        },
         threshold_strategy: ThresholdStrategy::Fixed,
         default_voting_deadline: 0,
-        retry_config: RetryConfig { enabled: false, max_retries: 0, initial_backoff_ledgers: 0 },
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
     };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
     // Setup Insurance: Requires 10%, Slash rate 50%
-    client.set_insurance_config(&admin, &InsuranceConfig {
-        enabled: true,
-        min_amount: 100,
-        min_insurance_bps: 1000, // 10%
-        slash_percentage: 50,    // 50%
-    });
+    client.set_insurance_config(
+        &admin,
+        &InsuranceConfig {
+            enabled: true,
+            min_amount: 100,
+            min_insurance_bps: 1000, // 10%
+            slash_percentage: 50,    // 50%
+        },
+    );
 
     sac_admin_client.mint(&proposer, &1000);
     let token_client = soroban_sdk::token::Client::new(&env, &token_addr);
@@ -6070,7 +6083,7 @@ fn test_insurance_pool_withdrawal() {
     let admin = Address::generate(&env);
     let proposer = Address::generate(&env);
     let withdraw_target = Address::generate(&env);
-    
+
     let token_admin = Address::generate(&env);
     let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
     let token_addr = sac.address();
@@ -6088,20 +6101,30 @@ fn test_insurance_pool_withdrawal() {
         weekly_limit: 10000,
         timelock_threshold: 5000,
         timelock_delay: 100,
-        velocity_limit: VelocityConfig { limit: 1000, window: 3600 },
+        velocity_limit: VelocityConfig {
+            limit: 1000,
+            window: 3600,
+        },
         threshold_strategy: ThresholdStrategy::Fixed,
         default_voting_deadline: 0,
-        retry_config: RetryConfig { enabled: false, max_retries: 0, initial_backoff_ledgers: 0 },
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
     };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
-    client.set_insurance_config(&admin, &InsuranceConfig {
-        enabled: true,
-        min_amount: 0,
-        min_insurance_bps: 1000, // 10%
-        slash_percentage: 100,   // 100% slashed
-    });
+    client.set_insurance_config(
+        &admin,
+        &InsuranceConfig {
+            enabled: true,
+            min_amount: 0,
+            min_insurance_bps: 1000, // 10%
+            slash_percentage: 100,   // 100% slashed
+        },
+    );
 
     sac_admin_client.mint(&proposer, &1000);
     let token_client = soroban_sdk::token::Client::new(&env, &token_addr);
