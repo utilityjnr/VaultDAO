@@ -6534,3 +6534,5 @@ fn test_insurance_pool_withdrawal() {
     let result = client.try_withdraw_insurance_pool(&admin, &token_addr, &withdraw_target, &1);
     assert!(result.is_err());
 }
+
+// ============================================================================
