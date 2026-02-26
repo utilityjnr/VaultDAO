@@ -80,8 +80,8 @@ pub struct InitConfig {
     pub retry_config: RetryConfig,
     /// Recovery configuration
     pub recovery_config: RecoveryConfig,
-    /// Oracle configuration for price feeds
-    pub oracle_config: OptionalVaultOracleConfig,
+    /// Staking configuration for proposals
+    pub staking_config: StakingConfig,
 }
 
 /// Vault configuration
@@ -120,8 +120,8 @@ pub struct Config {
     pub retry_config: RetryConfig,
     /// Recovery configuration
     pub recovery_config: RecoveryConfig,
-    /// Oracle configuration for price feeds
-    pub oracle_config: OptionalVaultOracleConfig,
+    /// Staking configuration for proposals
+    pub staking_config: StakingConfig,
 }
 
 /// Audit record for a cancelled proposal
@@ -352,6 +352,8 @@ pub struct Proposal {
     pub unlock_ledger: u64,
     /// Insurance amount staked by proposer (0 = no insurance). Held in vault.
     pub insurance_amount: i128,
+    /// Stake amount locked by proposer (0 = no stake). Held in vault.
+    pub stake_amount: i128,
     /// Gas (CPU instruction) limit for execution (0 = use global config default)
     pub gas_limit: u64,
     /// Estimated gas used during execution (populated on execution)
@@ -914,6 +916,126 @@ pub struct SubscriptionPayment {
 }
 
 // ============================================================================
+// Cross-Vault Proposal Coordination (Issue: feature/cross-vault-coordination)
+// ============================================================================
+
+/// Status of a cross-vault proposal
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum CrossVaultStatus {
+    Pending = 0,
+    Approved = 1,
+    Executed = 2,
+    Failed = 3,
+    Cancelled = 4,
+}
+
+/// Describes a single action to be executed on a participant vault
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct VaultAction {
+    /// Address of the participant vault contract
+    pub vault_address: Address,
+    /// Recipient of the transfer from the participant vault
+    pub recipient: Address,
+    /// Token contract address
+    pub token: Address,
+    /// Amount to transfer
+    pub amount: i128,
+    /// Optional memo
+    pub memo: Symbol,
+}
+
+/// Cross-vault proposal stored alongside the base Proposal
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CrossVaultProposal {
+    /// List of actions to execute across participant vaults
+    pub actions: Vec<VaultAction>,
+    /// Current status of the cross-vault proposal
+    pub status: CrossVaultStatus,
+    /// Per-action execution results (true = success)
+    pub execution_results: Vec<bool>,
+    /// Ledger when executed (0 if not yet executed)
+    pub executed_at: u64,
+}
+
+/// Configuration for cross-vault participation
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CrossVaultConfig {
+    /// Whether this vault participates in cross-vault operations
+    pub enabled: bool,
+    /// Vault addresses authorized to coordinate actions on this vault
+    pub authorized_coordinators: Vec<Address>,
+    /// Maximum amount per single cross-vault action
+    pub max_action_amount: i128,
+    /// Maximum number of actions in a single cross-vault proposal
+    pub max_actions: u32,
+}
+
+// ============================================================================
+// Dispute Resolution (Issue: feature/dispute-resolution)
+// ============================================================================
+
+/// Lifecycle status of a dispute
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum DisputeStatus {
+    /// Dispute has been filed, awaiting arbitrator review
+    Filed = 0,
+    /// Arbitrator is actively reviewing the dispute
+    UnderReview = 1,
+    /// Dispute has been resolved by an arbitrator
+    Resolved = 2,
+    /// Dispute was dismissed by an arbitrator
+    Dismissed = 3,
+}
+
+/// Outcome of a dispute resolution
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum DisputeResolution {
+    /// Ruling in favor of the original proposer (proposal proceeds)
+    InFavorOfProposer = 0,
+    /// Ruling in favor of the disputer (proposal rejected)
+    InFavorOfDisputer = 1,
+    /// Compromise reached (proposal modified or partially executed)
+    Compromise = 2,
+    /// Dispute dismissed as invalid
+    Dismissed = 3,
+}
+
+/// On-chain dispute record for a contested proposal
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct Dispute {
+    /// Unique dispute ID
+    pub id: u64,
+    /// ID of the disputed proposal
+    pub proposal_id: u64,
+    /// Address that filed the dispute
+    pub disputer: Address,
+    /// Short reason for the dispute
+    pub reason: Symbol,
+    /// IPFS hashes or on-chain references to supporting evidence
+    pub evidence: Vec<String>,
+    /// Current status
+    pub status: DisputeStatus,
+    /// Resolution outcome (only set when status is Resolved or Dismissed)
+    pub resolution: DisputeResolution,
+    /// Arbitrator who resolved the dispute (zero-value until resolved)
+    pub arbitrator: Address,
+    /// Ledger when dispute was filed
+    pub filed_at: u64,
+    /// Ledger when dispute was resolved (0 if unresolved)
+    pub resolved_at: u64,
+}
+
+// ============================================================================
 // Wallet Recovery (Issue: feature/wallet-recovery)
 // ============================================================================
 
@@ -1064,74 +1186,205 @@ impl Escrow {
         (self.total_amount * completed_percentage as i128) / 100 - self.released_amount
     }
 }
+// ============================================================================
+// Dynamic Fee Structure (Issue: feature/dynamic-fees)
+// ============================================================================
 
-/// A single operation within a batch transaction
+/// Fee tier based on transaction volume
 #[contracttype]
-#[derive(Clone)]
-pub struct BatchOperation {
-    /// Operation type (e.g., "transfer", "swap", "liquidity")
-    pub op_type: Symbol,
-    /// Recipient address
-    pub recipient: Address,
-    /// Token contract address
-    pub token: Address,
-    /// Amount for the operation
-    pub amount: i128,
-    /// Optional data for operation (e.g., swap params)
-    pub data: String,
+#[derive(Clone, Debug)]
+pub struct FeeTier {
+    /// Minimum volume threshold for this tier (in stroops)
+    pub min_volume: i128,
+    /// Fee rate in basis points (e.g., 100 = 1%)
+    pub fee_bps: u32,
 }
+
+/// Dynamic fee structure configuration
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct FeeStructure {
+    /// Volume-based fee tiers (sorted by min_volume ascending)
+    pub tiers: Vec<FeeTier>,
+    /// Base fee rate in basis points (used if no tiers match)
+    pub base_fee_bps: u32,
+    /// Reputation score threshold for discount eligibility
+    pub reputation_discount_threshold: u32,
+    /// Discount percentage for high-reputation users (0-100)
+    pub reputation_discount_percentage: u32,
+    /// Treasury address for fee distribution
+    pub treasury: Address,
+    /// Whether fee collection is enabled
+    pub enabled: bool,
+}
+
+// ============================================================================
+// Proposal Staking and Slashing (Issue: feature/proposal-staking)
+// ============================================================================
+
+/// Staking configuration for proposals
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct StakingConfig {
+    /// Whether staking is required for proposals
+    pub enabled: bool,
+    /// Minimum proposal amount that requires staking (in stroops)
+    pub min_amount: i128,
+    /// Base stake requirement as basis points of proposal amount (e.g. 500 = 5%)
+    pub base_stake_bps: u32,
+    /// Maximum stake requirement cap (absolute amount)
+    pub max_stake_amount: i128,
+    /// Percentage of stake slashed for malicious proposals (0-100)
+    pub slash_percentage: u32,
+    /// Reputation score threshold for reduced stake requirement
+    pub reputation_discount_threshold: u32,
+    /// Stake discount percentage for high-reputation users (0-100)
+    pub reputation_discount_percentage: u32,
+}
+
+impl StakingConfig {
+    pub fn default() -> Self {
+        StakingConfig {
+            enabled: false,
+            min_amount: 1_000_000_000, // 100 XLM default minimum
+            base_stake_bps: 500,        // 5% default stake
+            max_stake_amount: 10_000_000_000, // 1000 XLM max stake
+            slash_percentage: 50,       // 50% slashed on malicious
+            reputation_discount_threshold: 750,
+            reputation_discount_percentage: 30, // 30% discount for high rep
+        }
+    }
+}
+
+/// Stake record for a proposal
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct StakeRecord {
+    /// Proposal ID this stake is for
+    pub proposal_id: u64,
+    /// Address that staked
+    pub staker: Address,
+    /// Token staked
+    pub token: Address,
+    /// Amount staked
+    pub amount: i128,
+    /// Ledger when stake was locked
+    pub locked_at: u64,
+    /// Whether stake has been refunded
+    pub refunded: bool,
+    /// Whether stake has been slashed
+    pub slashed: bool,
+    /// Amount slashed (if any)
+    pub slashed_amount: i128,
+    /// Ledger when stake was released/slashed
+    pub released_at: u64,
+}
+
+impl FeeStructure {
+    pub fn default(env: &Env) -> Self {
+        // Use contract's own address as default treasury
+        // Admin should set a proper treasury address before enabling fees
+        let treasury = env.current_contract_address();
+
+        FeeStructure {
+            tiers: Vec::new(env),
+            base_fee_bps: 50, // 0.5% default
+            reputation_discount_threshold: 750,
+            reputation_discount_percentage: 50, // 50% discount
+            treasury,
+            enabled: false,
+        }
+    }
+}
+
+/// Fee calculation result
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct FeeCalculation {
+    /// Base fee before discounts
+    pub base_fee: i128,
+    /// Discount amount applied
+    pub discount: i128,
+    /// Final fee to collect
+    pub final_fee: i128,
+    /// Fee rate used (in basis points)
+    pub fee_bps: u32,
+    /// Whether reputation discount was applied
+    pub reputation_discount_applied: bool,
+}
+
+
+// ============================================================================
+// Batch Transaction System (Issue: feature/batch-transactions)
+// ============================================================================
 
 /// Status of a batch transaction
 #[contracttype]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum BatchStatus {
-    /// Awaiting execution
+    /// Batch created, awaiting execution
     Pending = 0,
-    /// Currently executing
+    /// Batch is currently being executed
     Executing = 1,
-    /// Successfully completed
+    /// Batch execution completed successfully
     Completed = 2,
-    /// Failed during execution
-    Failed = 3,
-    /// Rolled back due to failure
-    RolledBack = 4,
+    /// Batch execution failed and was rolled back
+    RolledBack = 3,
 }
 
-/// Atomic batch transaction containing multiple operations
+/// A single operation in a batch transaction
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
+pub struct BatchOperation {
+    /// Recipient of the transfer
+    pub recipient: Address,
+    /// Token contract address
+    pub token: Address,
+    /// Amount to transfer
+    pub amount: i128,
+    /// Optional memo
+    pub memo: Symbol,
+}
+
+/// Batch transaction containing multiple operations
+#[contracttype]
+#[derive(Clone, Debug)]
 pub struct BatchTransaction {
     /// Unique batch ID
     pub id: u64,
-    /// Creator of the batch
+    /// Address that created the batch
     pub creator: Address,
-    /// List of operations to execute atomically
+    /// List of operations to execute
     pub operations: Vec<BatchOperation>,
     /// Current status
     pub status: BatchStatus,
-    /// Timestamp when created
+    /// Ledger when batch was created
     pub created_at: u64,
-    /// Memo for the batch
+    /// Optional memo for the entire batch
     pub memo: Symbol,
-    /// Gas estimate for the batch
+    /// Estimated gas for the batch
     pub estimated_gas: u64,
 }
 
-/// Result of a batch transaction execution
+/// Result of batch execution
 #[contracttype]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BatchExecutionResult {
     /// Batch ID
     pub batch_id: u64,
-    /// Whether execution succeeded
+    /// Whether all operations succeeded
     pub success: bool,
+    /// Number of operations executed successfully
+    pub successful_operations: u32,
+    /// Total number of operations
+    pub total_operations: u32,
+    /// Ledger when execution completed
+    pub executed_at: u64,
     /// Index of failed operation (if any)
-    pub failed_operation_index: u64,
-    /// Error message if failed
+    pub failed_operation_index: u32,
+    /// Error message (if any)
     pub error: Symbol,
     /// Number of operations executed before failure
-    pub executed_count: u64,
-    /// Ledger when executed
-    pub executed_at: u64,
+    pub executed_count: u32,
 }

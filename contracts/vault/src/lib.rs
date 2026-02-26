@@ -16,17 +16,13 @@ mod token;
 mod types;
 
 use errors::VaultError;
-use soroban_sdk::{contract, contractimpl, Address, Env, IntoVal, Map, String, Symbol, Vec};
-pub use types::{
-    BatchExecutionResult, BatchOperation, BatchStatus, BatchTransaction, CancellationRecord,
-    Comment, Condition, ConditionLogic, Config, DexConfig, Escrow, EscrowStatus,
-    ExecutionFeeEstimate, GasConfig, InitConfig, InsuranceConfig, ListMode, Milestone,
-    NotificationPreferences, OptionalVaultOracleConfig, Priority, Proposal, ProposalAmendment,
-    ProposalStatus, ProposalTemplate, RecoveryConfig, RecoveryProposal, RecoveryStatus,
-    RecurringPayment, Reputation, RetryConfig, RetryState, Role, StreamStatus, StreamingPayment,
-    Subscription, SubscriptionPayment, SubscriptionStatus, SubscriptionTier, SwapProposal,
-    SwapResult, TemplateOverrides, ThresholdStrategy, TransferDetails, VaultMetrics,
-    VaultOracleConfig, VaultPriceData,
+use soroban_sdk::{contract, contractimpl, Address, Env, Map, String, Symbol, Vec};
+use types::{
+    Comment, Condition, ConditionLogic, Config, CrossVaultConfig, CrossVaultProposal,
+    CrossVaultStatus, Dispute, DisputeResolution, DisputeStatus, FeeCalculation, FeeStructure,
+    GasConfig, InsuranceConfig, ListMode, NotificationPreferences, Priority, Proposal,
+    ProposalAmendment, ProposalStatus, ProposalTemplate, Reputation, RetryConfig, RetryState, Role,
+    TemplateOverrides, ThresholdStrategy, VaultAction, VaultMetrics,
 };
 
 /// The main contract structure for VaultDAO.
@@ -117,13 +113,14 @@ impl VaultDAO {
             post_execution_hooks: config.post_execution_hooks,
             default_voting_deadline: config.default_voting_deadline,
             retry_config: config.retry_config,
-            recovery_config: config.recovery_config,
-            oracle_config: config.oracle_config.clone(),
+            recovery_config: config.recovery_config.clone(),
+            staking_config: config.staking_config.clone(),
         };
 
         // Store state
         storage::set_config(&env, &config_storage);
         storage::set_role(&env, &admin, Role::Admin);
+        storage::set_staking_config(&env, &config.staking_config);
         storage::set_initialized(&env);
         storage::extend_instance_ttl(&env);
 
@@ -325,6 +322,32 @@ impl VaultDAO {
             token::transfer_to_vault(&env, &token_addr, &proposer, actual_insurance);
         }
 
+        // 10b. Staking check and locking
+        let staking_config = storage::get_staking_config(&env);
+        let mut actual_stake = 0i128;
+        if staking_config.enabled && amount >= staking_config.min_amount {
+            // Calculate required stake based on proposal amount
+            let mut required_stake = amount * staking_config.base_stake_bps as i128 / 10_000;
+
+            // Cap at maximum stake amount
+            if required_stake > staking_config.max_stake_amount {
+                required_stake = staking_config.max_stake_amount;
+            }
+
+            // Reputation discount: high reputation users get reduced stake requirement
+            if rep.score >= staking_config.reputation_discount_threshold {
+                let discount = required_stake * staking_config.reputation_discount_percentage as i128 / 100;
+                required_stake = required_stake.saturating_sub(discount);
+            }
+
+            actual_stake = required_stake;
+
+            // Lock stake tokens in vault
+            if actual_stake > 0 {
+                token::transfer_to_vault(&env, &token_addr, &proposer, actual_stake);
+            }
+        }
+
         // 11. Reserve spending (confirmed on execution)
         storage::add_daily_spent(&env, today, amount);
         storage::add_weekly_spent(&env, week, amount);
@@ -333,6 +356,22 @@ impl VaultDAO {
         let proposal_id = storage::increment_proposal_id(&env);
         Self::validate_dependencies(&env, proposal_id, &depends_on)?;
         let current_ledger = env.ledger().sequence() as u64;
+
+        // Create stake record after proposal_id is generated
+        if actual_stake > 0 {
+            let stake_record = types::StakeRecord {
+                proposal_id,
+                staker: proposer.clone(),
+                token: token_addr.clone(),
+                amount: actual_stake,
+                locked_at: current_ledger,
+                refunded: false,
+                slashed: false,
+                slashed_amount: 0,
+                released_at: 0,
+            };
+            storage::set_stake_record(&env, &stake_record);
+        }
 
         // Gas limit: derive from GasConfig (0 = unlimited)
         let gas_cfg = storage::get_gas_config(&env);
@@ -362,6 +401,7 @@ impl VaultDAO {
             expires_at: current_ledger + PROPOSAL_EXPIRY_LEDGERS,
             unlock_ledger: 0,
             insurance_amount: actual_insurance,
+            stake_amount: actual_stake,
             gas_limit: proposal_gas_limit,
             gas_used: 0,
             snapshot_ledger: current_ledger,
@@ -389,6 +429,15 @@ impl VaultDAO {
                 proposal_id,
                 &proposer,
                 actual_insurance,
+                &token_addr,
+            );
+        }
+        if actual_stake > 0 {
+            events::emit_stake_locked(
+                &env,
+                proposal_id,
+                &proposer,
+                actual_stake,
                 &token_addr,
             );
         }
@@ -571,6 +620,7 @@ impl VaultDAO {
                 expires_at: current_ledger + PROPOSAL_EXPIRY_LEDGERS,
                 unlock_ledger: 0,
                 insurance_amount: insurance_per_proposal,
+                stake_amount: 0, // Batch proposals don't require individual stakes
                 gas_limit: proposal_gas_limit,
                 gas_used: 0,
                 snapshot_ledger: current_ledger,
@@ -948,6 +998,43 @@ impl VaultDAO {
                 slash_amount,
                 return_amount,
             );
+        }
+
+        // Slash stake if present (for malicious proposals)
+        if proposal.stake_amount > 0 {
+            if let Some(mut stake_record) = storage::get_stake_record(&env, proposal_id) {
+                if !stake_record.refunded && !stake_record.slashed {
+                    let staking_config = storage::get_staking_config(&env);
+                    let slash_amount =
+                        proposal.stake_amount * staking_config.slash_percentage as i128 / 100;
+                    let return_amount = proposal.stake_amount - slash_amount;
+
+                    // Return remainder to proposer
+                    if return_amount > 0 {
+                        token::transfer(&env, &proposal.token, &proposal.proposer, return_amount);
+                    }
+
+                    // Track slashed funds into the stake pool
+                    if slash_amount > 0 {
+                        storage::add_to_stake_pool(&env, &proposal.token, slash_amount);
+                    }
+
+                    // Update stake record
+                    let current_ledger = env.ledger().sequence() as u64;
+                    stake_record.slashed = true;
+                    stake_record.slashed_amount = slash_amount;
+                    stake_record.released_at = current_ledger;
+                    storage::set_stake_record(&env, &stake_record);
+
+                    events::emit_stake_slashed(
+                        &env,
+                        proposal_id,
+                        &proposal.proposer,
+                        slash_amount,
+                        return_amount,
+                    );
+                }
+            }
         }
 
         proposal.status = ProposalStatus::Rejected;
@@ -1395,6 +1482,60 @@ impl VaultDAO {
         Ok(())
     }
 
+    /// Admin withdraws slashed stake funds
+    pub fn withdraw_stake_pool(
+        env: Env,
+        admin: Address,
+        token_addr: Address,
+        recipient: Address,
+        amount: i128,
+    ) -> Result<(), VaultError> {
+        admin.require_auth();
+
+        let role = storage::get_role(&env, &admin);
+        if role != Role::Admin {
+            return Err(VaultError::Unauthorized);
+        }
+
+        if amount <= 0 {
+            return Err(VaultError::InvalidAmount);
+        }
+
+        let current_pool = storage::get_stake_pool(&env, &token_addr);
+        if amount > current_pool {
+            return Err(VaultError::InsufficientBalance);
+        }
+
+        // Subtract from the stake pool tracker
+        storage::subtract_from_stake_pool(&env, &token_addr, amount);
+
+        // Execute actual token transfer from vault
+        token::transfer(&env, &token_addr, &recipient, amount);
+
+        Ok(())
+    }
+
+    /// Admin updates staking configuration
+    pub fn update_staking_config(
+        env: Env,
+        admin: Address,
+        config: types::StakingConfig,
+    ) -> Result<(), VaultError> {
+        admin.require_auth();
+
+        let role = storage::get_role(&env, &admin);
+        if role != Role::Admin {
+            return Err(VaultError::Unauthorized);
+        }
+
+        storage::set_staking_config(&env, &config);
+        storage::extend_instance_ttl(&env);
+
+        events::emit_config_updated(&env, &admin);
+
+        Ok(())
+    }
+
     // ========================================================================
     // View Functions
     // ========================================================================
@@ -1407,6 +1548,21 @@ impl VaultDAO {
     /// Get current pooled slash insurance balance
     pub fn get_insurance_pool(env: Env, token_addr: Address) -> i128 {
         storage::get_insurance_pool(&env, &token_addr)
+    }
+
+    /// Get current pooled slashed stake balance
+    pub fn get_stake_pool(env: Env, token_addr: Address) -> i128 {
+        storage::get_stake_pool(&env, &token_addr)
+    }
+
+    /// Get stake record for a proposal
+    pub fn get_stake_record(env: Env, proposal_id: u64) -> Option<types::StakeRecord> {
+        storage::get_stake_record(&env, proposal_id)
+    }
+
+    /// Get staking configuration
+    pub fn get_staking_config(env: Env) -> types::StakingConfig {
+        storage::get_staking_config(&env)
     }
 
     /// Get role for an address
@@ -2456,9 +2612,10 @@ impl VaultDAO {
                 continue;
             }
 
-            // Skip if insufficient balance (check both proposal amount and insurance)
+            // Skip if insufficient balance (check proposal amount + stake to refund)
             let balance = token::balance(&env, &proposal.token);
-            if balance < proposal.amount {
+            let required_balance = proposal.amount + proposal.stake_amount;
+            if balance < required_balance {
                 failed_count += 1;
                 continue;
             }
@@ -2482,7 +2639,32 @@ impl VaultDAO {
                 );
             }
 
-            proposal.gas_used = fee_estimate.total_fee;
+            // Refund stake on successful execution
+            if proposal.stake_amount > 0 {
+                if let Some(mut stake_record) = storage::get_stake_record(&env, proposal_id) {
+                    if !stake_record.refunded && !stake_record.slashed {
+                        token::transfer(
+                            &env,
+                            &proposal.token,
+                            &proposal.proposer,
+                            proposal.stake_amount,
+                        );
+                        
+                        stake_record.refunded = true;
+                        stake_record.released_at = current_ledger;
+                        storage::set_stake_record(&env, &stake_record);
+                        
+                        events::emit_stake_refunded(
+                            &env,
+                            proposal_id,
+                            &proposal.proposer,
+                            proposal.stake_amount,
+                        );
+                    }
+                }
+            }
+
+            proposal.gas_used = estimated_gas;
             proposal.status = ProposalStatus::Executed;
             storage::set_proposal(&env, &proposal);
 
@@ -2823,6 +3005,91 @@ impl VaultDAO {
     /// Get the current insurance configuration.
     pub fn get_insurance_config(env: Env) -> InsuranceConfig {
         storage::get_insurance_config(&env)
+    }
+
+    // ========================================================================
+    // Dynamic Fee System (Issue: feature/dynamic-fees)
+    // ========================================================================
+
+    /// Configure the dynamic fee structure.
+    ///
+    /// Only Admin can update fee configuration.
+    ///
+    /// # Arguments
+    /// * `admin` - Admin address (must authorize)
+    /// * `fee_structure` - New fee structure configuration
+    pub fn set_fee_structure(
+        env: Env,
+        admin: Address,
+        fee_structure: types::FeeStructure,
+    ) -> Result<(), VaultError> {
+        admin.require_auth();
+
+        let role = storage::get_role(&env, &admin);
+        if role != Role::Admin {
+            return Err(VaultError::Unauthorized);
+        }
+
+        // Validate fee structure
+        if fee_structure.base_fee_bps > 10_000 {
+            return Err(VaultError::InvalidAmount);
+        }
+
+        // Validate tiers are sorted by min_volume
+        for i in 1..fee_structure.tiers.len() {
+            let prev = fee_structure.tiers.get(i - 1).unwrap();
+            let curr = fee_structure.tiers.get(i).unwrap();
+            if curr.min_volume <= prev.min_volume {
+                return Err(VaultError::InvalidAmount);
+            }
+            if curr.fee_bps > 10_000 {
+                return Err(VaultError::InvalidAmount);
+            }
+        }
+
+        if fee_structure.reputation_discount_percentage > 100 {
+            return Err(VaultError::InvalidAmount);
+        }
+
+        storage::set_fee_structure(&env, &fee_structure);
+        storage::extend_instance_ttl(&env);
+
+        events::emit_fee_structure_updated(&env, &admin, fee_structure.enabled);
+
+        Ok(())
+    }
+
+    /// Get the current fee structure configuration.
+    pub fn get_fee_structure(env: Env) -> types::FeeStructure {
+        storage::get_fee_structure(&env)
+    }
+
+    /// Calculate fee for a given transaction without collecting it.
+    ///
+    /// # Arguments
+    /// * `user` - The user making the transaction
+    /// * `token` - The token being transferred
+    /// * `amount` - The transaction amount
+    ///
+    /// # Returns
+    /// FeeCalculation with base fee, discount, and final fee
+    pub fn calculate_fee_public(
+        env: Env,
+        user: Address,
+        token: Address,
+        amount: i128,
+    ) -> types::FeeCalculation {
+        Self::calculate_fee(&env, &user, &token, amount)
+    }
+
+    /// Get total fees collected for a specific token.
+    pub fn get_fees_collected(env: Env, token: Address) -> i128 {
+        storage::get_fees_collected(&env, &token)
+    }
+
+    /// Get user's total transaction volume for a specific token.
+    pub fn get_user_volume(env: Env, user: Address, token: Address) -> i128 {
+        storage::get_user_volume(&env, &user, &token)
     }
 
     // ========================================================================
@@ -3393,6 +3660,7 @@ impl VaultDAO {
             expires_at: (current_ledger + PROPOSAL_EXPIRY_LEDGERS as u32) as u64,
             unlock_ledger: unlock_ledger as u64,
             insurance_amount,
+            stake_amount: 0, // Swap proposals don't require stake
             gas_limit: proposal_gas_limit,
             gas_used: 0,
             snapshot_ledger: current_ledger as u64,
@@ -4235,9 +4503,18 @@ impl VaultDAO {
             return Err(VaultError::GasLimitExceeded);
         }
 
-        // Check vault balance (account for insurance amount that is also held in vault)
+        // Calculate fee for this transaction
+        let fee_amount = Self::collect_and_distribute_fee(
+            env,
+            &proposal.proposer,
+            &proposal.token,
+            proposal.amount,
+        )?;
+
+        // Check vault balance (account for insurance amount, stake amount, and fee)
         let balance = token::balance(env, &proposal.token);
-        if balance < proposal.amount + proposal.insurance_amount {
+        let total_required = proposal.amount + proposal.insurance_amount + proposal.stake_amount + fee_amount;
+        if balance < total_required {
             return Err(VaultError::InsufficientBalance);
         }
 
@@ -4260,8 +4537,34 @@ impl VaultDAO {
             );
         }
 
-        // Record estimated fee used for execution.
-        proposal.gas_used = fee_estimate.total_fee;
+        // Refund stake on successful execution
+        if proposal.stake_amount > 0 {
+            if let Some(mut stake_record) = storage::get_stake_record(env, proposal.id) {
+                if !stake_record.refunded && !stake_record.slashed {
+                    token::transfer(
+                        env,
+                        &proposal.token,
+                        &proposal.proposer,
+                        proposal.stake_amount,
+                    );
+                    
+                    let current_ledger = env.ledger().sequence() as u64;
+                    stake_record.refunded = true;
+                    stake_record.released_at = current_ledger;
+                    storage::set_stake_record(env, &stake_record);
+                    
+                    events::emit_stake_refunded(
+                        env,
+                        proposal.id,
+                        &proposal.proposer,
+                        proposal.stake_amount,
+                    );
+                }
+            }
+        }
+
+        // Record gas used
+        proposal.gas_used = estimated_gas;
 
         Ok(())
     }
@@ -4572,6 +4875,7 @@ impl VaultDAO {
             expires_at,
             unlock_ledger,
             insurance_amount: 0,
+            stake_amount: 0, // Template proposals don't require stake
             gas_limit: 0,
             gas_used: 0,
             snapshot_ledger: current_ledger,
@@ -5125,10 +5429,12 @@ impl VaultDAO {
         let result = BatchExecutionResult {
             batch_id,
             success,
-            failed_operation_index: failed_index,
-            error: error_msg,
-            executed_count,
+            successful_operations: executed_count as u32,
+            total_operations: batch.operations.len(),
             executed_at: env.ledger().timestamp(),
+            failed_operation_index: failed_index as u32,
+            error: error_msg,
+            executed_count: executed_count as u32,
         };
 
         storage::set_batch_result(&env, &result);

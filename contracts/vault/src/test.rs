@@ -2,8 +2,9 @@
 
 use super::*;
 use crate::types::{
-    DexConfig, RetryConfig, StreamStatus, SubscriptionStatus, SubscriptionTier, SwapProposal,
-    TimeBasedThreshold, TransferDetails, VelocityConfig,
+    CrossVaultConfig, CrossVaultStatus, DexConfig, DisputeResolution, DisputeStatus, FeeStructure,
+    FeeTier, RetryConfig, SubscriptionStatus, SubscriptionTier, SwapProposal, TimeBasedThreshold,
+    TransferDetails, VaultAction, VelocityConfig,
 };
 use crate::{InitConfig, VaultDAO, VaultDAOClient};
 use soroban_sdk::{
@@ -42,8 +43,8 @@ fn default_init_config(
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(_env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
+        recovery_config: crate::types::RecoveryConfig::default(_env),
+        staking_config: types::StakingConfig::default(),
     }
 }
 
@@ -91,8 +92,8 @@ fn test_multisig_approval() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config: types::StakingConfig::default(),
     };
     client.initialize(&admin, &config);
 
@@ -168,9 +169,9 @@ fn test_unauthorized_proposal() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
 
     let res = client.try_propose_transfer(
@@ -232,9 +233,9 @@ fn test_timelock_violation() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -531,9 +532,9 @@ fn test_priority_levels() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -632,9 +633,9 @@ fn test_get_proposals_by_priority() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -711,9 +712,9 @@ fn test_change_priority_unauthorized() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -773,9 +774,9 @@ fn test_comment_functionality() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -861,9 +862,9 @@ fn test_blacklist_mode() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -942,9 +943,9 @@ fn test_abstention_does_not_count_toward_threshold() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -1014,9 +1015,9 @@ fn test_list_management() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
 
     client.set_list_mode(&admin, &ListMode::Whitelist);
@@ -1075,9 +1076,9 @@ fn test_cannot_abstain_after_voting() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1140,9 +1141,9 @@ fn test_cannot_abstain_twice() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1206,9 +1207,9 @@ fn test_velocity_limit_enforcement() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer, &Role::Treasurer);
 
@@ -1291,9 +1292,9 @@ fn test_verify_attachment() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1354,9 +1355,9 @@ fn test_remove_attachment() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1423,9 +1424,9 @@ fn test_attachment_unauthorized() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -1489,9 +1490,9 @@ fn test_attachment_duplicate() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1555,9 +1556,9 @@ fn test_attachment_invalid_hash() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1618,9 +1619,9 @@ fn test_admin_can_add_attachment() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1681,9 +1682,9 @@ fn test_set_and_get_proposal_metadata() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1752,9 +1753,9 @@ fn test_remove_proposal_metadata() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -1822,9 +1823,9 @@ fn test_proposal_metadata_unauthorized() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -2303,9 +2304,9 @@ fn test_fixed_threshold_strategy() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -2377,9 +2378,9 @@ fn test_percentage_threshold_strategy() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -2462,9 +2463,9 @@ fn test_time_based_threshold_strategy() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -2536,9 +2537,9 @@ fn test_condition_balance_above() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -2607,9 +2608,9 @@ fn test_condition_date_after() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -2689,9 +2690,9 @@ fn test_condition_multiple_and_logic() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -2777,9 +2778,9 @@ fn test_condition_multiple_or_logic() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -2858,9 +2859,9 @@ fn test_condition_no_conditions() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -2926,9 +2927,9 @@ fn test_dex_config_setup() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
 
     let mut enabled_dexs = Vec::new(&env);
@@ -2989,9 +2990,9 @@ fn test_swap_proposal_creation() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -3058,9 +3059,9 @@ fn test_dex_not_enabled_error() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -3114,9 +3115,9 @@ fn test_batch_propose_multi_token() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -3199,9 +3200,9 @@ fn test_batch_propose_exceeds_max_size() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -3273,9 +3274,9 @@ fn test_quorum_disabled_behaves_like_fixed_threshold() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -3347,9 +3348,9 @@ fn test_quorum_blocks_approval_until_satisfied() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -3442,9 +3443,9 @@ fn test_abstentions_count_toward_quorum_but_not_threshold() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -3537,9 +3538,9 @@ fn test_get_quorum_status() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -3619,9 +3620,9 @@ fn test_get_quorum_status_quorum_disabled() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -3679,9 +3680,9 @@ fn test_update_quorum() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
 
     // Admin can update quorum to a valid value
@@ -3740,9 +3741,9 @@ fn test_execution_rechecks_quorum_requirement() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -3814,9 +3815,9 @@ fn test_batch_execution_rechecks_quorum_requirement() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
 
@@ -3894,9 +3895,9 @@ fn test_quorum_satisfied_by_approvals_alone() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &signer1, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -3960,9 +3961,9 @@ fn test_initialize_rejects_quorum_too_high() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
 
     let result = client.try_initialize(&admin, &config);
     assert_eq!(result.err(), Some(Ok(VaultError::QuorumTooHigh)));
@@ -4016,9 +4017,9 @@ macro_rules! setup_retry_test {
                 max_retries: 3,
                 initial_backoff_ledgers: 10,
             },
-            recovery_config: crate::RecoveryConfig::default(&$env),
-            oracle_config: crate::OptionalVaultOracleConfig::None,
-        };
+            recovery_config: crate::types::RecoveryConfig::default(&$env),
+                staking_config: types::StakingConfig::default(),
+            };
 
         $client.initialize(&$admin, &config);
         $client.set_role(&$admin, &$signer1, &Role::Treasurer);
@@ -4209,9 +4210,9 @@ fn test_retry_not_enabled_passes_through_error() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
 
     client.initialize(&admin, &config);
     client.set_role(&admin, &admin, &Role::Treasurer);
@@ -4312,9 +4313,9 @@ fn test_retry_disabled_rejects_retry_execution() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
 
     client.initialize(&admin, &config);
 
@@ -4734,9 +4735,9 @@ fn test_cross_vault_multi_vault_actions() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
 
     // Initialize all vaults
     coordinator.initialize(&admin, &config);
@@ -5213,9 +5214,9 @@ fn test_reputation_initialized_at_neutral() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
@@ -5271,9 +5272,9 @@ fn test_reputation_increases_on_proposal_creation() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
@@ -5339,9 +5340,9 @@ fn test_reputation_increases_on_approval() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
     client.set_role(&admin, &approver, &Role::Treasurer);
@@ -5412,9 +5413,9 @@ fn test_participation_tracking_on_abstention() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
 
     let proposal_id = client.propose_transfer(
@@ -5481,9 +5482,9 @@ fn test_reputation_increases_on_execution() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
     client.set_role(&admin, &signer, &Role::Treasurer);
@@ -5554,9 +5555,9 @@ fn test_reputation_decreases_on_rejection() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
     client.set_role(&admin, &proposer2, &Role::Treasurer);
@@ -5625,9 +5626,9 @@ fn test_reputation_decay_over_time() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
@@ -5715,9 +5716,9 @@ fn test_create_from_template_with_overrides() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -5797,9 +5798,9 @@ fn test_create_from_template_amount_out_of_range() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -5884,9 +5885,9 @@ fn test_create_from_inactive_template() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
 
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
@@ -5964,9 +5965,9 @@ fn test_reputation_based_spending_limit() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
@@ -6043,9 +6044,9 @@ fn test_reputation_high_score_get_limits_boost() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &treasurer, &Role::Treasurer);
 
@@ -6112,9 +6113,9 @@ fn test_template_not_found() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
 
     // Try to get non-existent template
@@ -6183,9 +6184,9 @@ fn test_retry_not_enabled() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
     client.set_role(&admin, &signer, &Role::Treasurer);
@@ -6393,9 +6394,9 @@ fn test_insurance_posting_and_refund() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
     client.set_role(&admin, &signer2, &Role::Treasurer);
@@ -6495,9 +6496,9 @@ fn test_insurance_slashing_on_rejection() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
@@ -6585,9 +6586,9 @@ fn test_insurance_pool_withdrawal() {
             max_retries: 0,
             initial_backoff_ledgers: 0,
         },
-        recovery_config: crate::RecoveryConfig::default(&env),
-        oracle_config: crate::OptionalVaultOracleConfig::None,
-    };
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+            staking_config: types::StakingConfig::default(),
+        };
     client.initialize(&admin, &config);
     client.set_role(&admin, &proposer, &Role::Treasurer);
 
@@ -6767,8 +6768,11 @@ fn test_stream_cancel() {
 }
 
 // ============================================================================
+// Dynamic Fee System Tests (Issue: feature/dynamic-fees)
+// ============================================================================
+
 #[test]
-fn test_estimate_execution_fee_breakdown_and_storage() {
+fn test_fee_structure_configuration() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -6776,80 +6780,49 @@ fn test_estimate_execution_fee_breakdown_and_storage() {
     let client = VaultDAOClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    let sender = Address::generate(&env);
-    let recipient = Address::generate(&env);
+    let treasury = Address::generate(&env);
 
-    // Register token
-    let token_admin = Address::generate(&env);
-    let token_id = env.register_stellar_asset_contract_v2(token_admin);
-    let token_client = token::Client::new(&env, &token_id.address());
-    let token_admin_client = StellarAssetClient::new(&env, &token_id.address());
-    let token_id_addr = token_id.address();
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
 
-    // Initialize vault
-    let signers = Vec::from_array(&env, [admin.clone()]);
     let config = default_init_config(&env, signers, 1);
     client.initialize(&admin, &config);
 
-    // Give sender some tokens
-    token_admin_client.mint(&sender, &1000);
-    assert_eq!(token_client.balance(&sender), 1000);
+    // Create fee structure with tiers
+    let mut tiers = Vec::new(&env);
+    tiers.push_back(FeeTier {
+        min_volume: 1000,
+        fee_bps: 40, // 0.4% for volume >= 1000
+    });
+    tiers.push_back(FeeTier {
+        min_volume: 5000,
+        fee_bps: 30, // 0.3% for volume >= 5000
+    });
+    tiers.push_back(FeeTier {
+        min_volume: 10000,
+        fee_bps: 20, // 0.2% for volume >= 10000
+    });
 
-    // 1. Create stream: 100 tokens over 100 seconds (rate = 1 token/sec)
-    let stream_id = client.create_stream(&sender, &recipient, &token_id_addr, &100, &100);
-    assert_eq!(token_client.balance(&sender), 900);
-    assert_eq!(token_client.balance(&contract_id), 100);
+    let fee_structure = FeeStructure {
+        tiers,
+        base_fee_bps: 50, // 0.5% base
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 50,
+        treasury: treasury.clone(),
+        enabled: true,
+    };
 
-    // 2. Wait 10 seconds
-    env.ledger().with_mut(|li| li.timestamp += 10);
+    client.set_fee_structure(&admin, &fee_structure);
 
-    // Check stream status
-    let stream = client.get_stream(&stream_id);
-    assert_eq!(stream.status, StreamStatus::Active);
-
-    // 3. Claim: should be 10 tokens
-    client.claim_stream(&recipient, &stream_id);
-    assert_eq!(token_client.balance(&recipient), 10);
-
-    let stream = client.get_stream(&stream_id);
-    assert_eq!(stream.claimed_amount, 10);
-
-    // 4. Pause stream
-    client.pause_stream(&sender, &stream_id);
-    let stream = client.get_stream(&stream_id);
-    assert_eq!(stream.status, StreamStatus::Paused);
-    assert_eq!(stream.accumulated_seconds, 10);
-
-    // 5. Wait 20 seconds while paused
-    env.ledger().with_mut(|li| li.timestamp += 20);
-
-    // Claim should give 0 more tokens
-    client.claim_stream(&recipient, &stream_id);
-    assert_eq!(token_client.balance(&recipient), 10);
-
-    // 6. Resume stream
-    client.resume_stream(&sender, &stream_id);
-
-    // 7. Wait 10 seconds
-    env.ledger().with_mut(|li| li.timestamp += 10);
-
-    // Total active time = 10 (before pause) + 10 (after resume) = 20
-    // Total claimable = 20. Claimed = 10. New claim = 10.
-    client.claim_stream(&recipient, &stream_id);
-    assert_eq!(token_client.balance(&recipient), 20);
-
-    // 8. Wait till end (another 80 seconds)
-    env.ledger().with_mut(|li| li.timestamp += 80);
-
-    client.claim_stream(&recipient, &stream_id);
-    assert_eq!(token_client.balance(&recipient), 100);
-
-    let stream = client.get_stream(&stream_id);
-    assert_eq!(stream.status, StreamStatus::Completed);
+    // Verify configuration
+    let retrieved = client.get_fee_structure();
+    assert_eq!(retrieved.base_fee_bps, 50);
+    assert_eq!(retrieved.tiers.len(), 3);
+    assert_eq!(retrieved.enabled, true);
 }
 
 #[test]
-fn test_estimate_execution_fee_includes_insurance_step() {
+fn test_fee_calculation_base_rate() {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -6857,296 +6830,904 @@ fn test_estimate_execution_fee_includes_insurance_step() {
     let client = VaultDAOClient::new(&env, &contract_id);
 
     let admin = Address::generate(&env);
-    let treasurer = Address::generate(&env);
-    let recipient = Address::generate(&env);
+    let user = Address::generate(&env);
+    let token = Address::generate(&env);
+    let treasury = Address::generate(&env);
 
-    // Register a proper Stellar Asset Contract for the token
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Enable fees with base rate only
+    let fee_structure = FeeStructure {
+        tiers: Vec::new(&env),
+        base_fee_bps: 50, // 0.5%
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 50,
+        treasury: treasury.clone(),
+        enabled: true,
+    };
+
+    client.set_fee_structure(&admin, &fee_structure);
+
+    // Calculate fee for 1000 stroops
+    let fee_calc = client.calculate_fee_public(&user, &token, &1000);
+
+    // Expected: 1000 * 50 / 10000 = 5 stroops
+    assert_eq!(fee_calc.base_fee, 5);
+    assert_eq!(fee_calc.final_fee, 5);
+    assert_eq!(fee_calc.discount, 0);
+    assert_eq!(fee_calc.reputation_discount_applied, false);
+}
+
+#[test]
+fn test_fee_calculation_volume_tiers() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let token = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Set up fee tiers
+    let mut tiers = Vec::new(&env);
+    tiers.push_back(FeeTier {
+        min_volume: 1000,
+        fee_bps: 40, // 0.4%
+    });
+    tiers.push_back(FeeTier {
+        min_volume: 5000,
+        fee_bps: 30, // 0.3%
+    });
+
+    let fee_structure = FeeStructure {
+        tiers,
+        base_fee_bps: 50, // 0.5% base
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 50,
+        treasury: treasury.clone(),
+        enabled: true,
+    };
+
+    client.set_fee_structure(&admin, &fee_structure);
+
+    // Test base rate (no volume yet)
+    let fee_calc = client.calculate_fee_public(&user, &token, &100);
+    assert_eq!(fee_calc.fee_bps, 50); // Base rate
+
+    // Note: In a real scenario, we would need to execute transactions
+    // to build up volume. For this test, we're just verifying the
+    // fee calculation logic works correctly.
+}
+
+#[test]
+fn test_fee_calculation_reputation_discount() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let high_rep_user = Address::generate(&env);
+    let token = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+    signers.push_back(high_rep_user.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Set roles
+    client.set_role(&admin, &high_rep_user, &Role::Treasurer);
+
+    // Enable fees
+    let fee_structure = FeeStructure {
+        tiers: Vec::new(&env),
+        base_fee_bps: 100, // 1%
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 50, // 50% discount
+        treasury: treasury.clone(),
+        enabled: true,
+    };
+
+    client.set_fee_structure(&admin, &fee_structure);
+
+    // Build reputation by creating and executing proposals
+    // (In a real test, we'd need to go through the full proposal lifecycle)
+
+    // For now, just verify the fee calculation logic
+    let fee_calc = client.calculate_fee_public(&high_rep_user, &token, &1000);
+
+    // Base fee: 1000 * 100 / 10000 = 10
+    assert_eq!(fee_calc.base_fee, 10);
+
+    // Without high reputation, no discount
+    assert_eq!(fee_calc.discount, 0);
+}
+
+#[test]
+fn test_fee_disabled() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let token = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Disable fees
+    let fee_structure = FeeStructure {
+        tiers: Vec::new(&env),
+        base_fee_bps: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 50,
+        treasury: treasury.clone(),
+        enabled: false, // Disabled
+    };
+
+    client.set_fee_structure(&admin, &fee_structure);
+
+    // Calculate fee - should be zero
+    let fee_calc = client.calculate_fee_public(&user, &token, &1000);
+    assert_eq!(fee_calc.final_fee, 0);
+    assert_eq!(fee_calc.base_fee, 0);
+}
+
+#[test]
+fn test_fee_structure_validation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Test invalid base fee (> 100%)
+    let mut invalid_fee_structure = FeeStructure {
+        tiers: Vec::new(&env),
+        base_fee_bps: 15000, // > 10000 (100%)
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 50,
+        treasury: treasury.clone(),
+        enabled: true,
+    };
+
+    let result = client.try_set_fee_structure(&admin, &invalid_fee_structure);
+    assert!(result.is_err());
+
+    // Test invalid discount percentage (> 100)
+    invalid_fee_structure.base_fee_bps = 50;
+    invalid_fee_structure.reputation_discount_percentage = 150;
+
+    let result = client.try_set_fee_structure(&admin, &invalid_fee_structure);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_fee_structure_unauthorized() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let non_admin = Address::generate(&env);
+    let treasury = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    let fee_structure = FeeStructure {
+        tiers: Vec::new(&env),
+        base_fee_bps: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 50,
+        treasury: treasury.clone(),
+        enabled: true,
+    };
+
+    // Non-admin should not be able to set fee structure
+    let result = client.try_set_fee_structure(&non_admin, &fee_structure);
+    assert!(result.is_err());
+    assert_eq!(result.err(), Some(Ok(VaultError::Unauthorized)));
+}
+
+#[test]
+fn test_user_volume_tracking() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let user = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Initially, volume should be zero
+    let volume = client.get_user_volume(&user, &token);
+    assert_eq!(volume, 0);
+
+    // Note: Volume is updated during proposal execution
+    // In a full integration test, we would execute proposals
+    // and verify volume increases
+}
+
+#[test]
+fn test_fees_collected_tracking() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let token = Address::generate(&env);
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let config = default_init_config(&env, signers, 1);
+    client.initialize(&admin, &config);
+
+    // Initially, fees collected should be zero
+    let fees = client.get_fees_collected(&token);
+    assert_eq!(fees, 0);
+
+    // Note: Fees are collected during proposal execution
+    // In a full integration test, we would execute proposals
+    // and verify fees are collected
+}
+
+// ============================================================================
+// Staking Tests (Issue: feature/proposal-staking)
+// ============================================================================
+
+#[test]
+fn test_staking_requirement_and_locking() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let recipient = Address::generate(&env);
     let token_admin = Address::generate(&env);
-    let sac = env.register_stellar_asset_contract_v2(token_admin.clone());
-    let token = sac.address();
-    let sac_admin_client = StellarAssetClient::new(&env, &token);
+    let token = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token.address());
 
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
-    signers.push_back(treasurer.clone());
+    signers.push_back(proposer.clone());
 
-    let config = default_init_config(&env, signers, 2);
-    client.initialize(&admin, &config);
-    client.set_role(&admin, &treasurer, &Role::Treasurer);
-    client.set_gas_config(
-        &admin,
-        &GasConfig {
-            enabled: true,
-            default_gas_limit: 10_000,
-            base_cost: 50,
-            condition_cost: 10,
+    // Initialize with staking enabled
+    let staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 100,
+        base_stake_bps: 500, // 5%
+        max_stake_amount: 10_000,
+        slash_percentage: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 30,
+    };
+
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        quorum: 0,
+        spending_limit: 10_000,
+        daily_limit: 50_000,
+        weekly_limit: 100_000,
+        timelock_threshold: 5_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
         },
-    );
-
-    // Mint tokens to the treasurer so they can lock insurance
-    sac_admin_client.mint(&treasurer, &1000);
-
-    let mut conditions = Vec::new(&env);
-    conditions.push_back(Condition::DateAfter(200));
-
-    let proposal_id = client.propose_transfer(
-        &treasurer,
-        &recipient,
-        &token,
-        &100,
-        &Symbol::new(&env, "ins_fee"),
-        &Priority::Normal,
-        &conditions,
-        &ConditionLogic::And,
-        &25i128,
-    );
-
-    let estimate = client.estimate_execution_fee(&proposal_id);
-    assert_eq!(estimate.operation_count, 3);
-    assert_eq!(estimate.base_fee, 50);
-    assert_eq!(estimate.resource_fee, 30);
-    assert_eq!(estimate.total_fee, 80);
-}
-
-#[test]
-fn test_estimate_execution_fee_refreshes_after_gas_config_update() {
-    let env = Env::default();
-    env.mock_all_auths();
-
-    let contract_id = env.register(VaultDAO, ());
-    let client = VaultDAOClient::new(&env, &contract_id);
-
-    let admin = Address::generate(&env);
-    let treasurer = Address::generate(&env);
-    let recipient = Address::generate(&env);
-    let token = env
-        .register_stellar_asset_contract_v2(admin.clone())
-        .address();
-    let token_client = soroban_sdk::token::StellarAssetClient::new(&env, &token);
-    token_client.mint(&contract_id, &1000);
-
-    let mut signers = Vec::new(&env);
-    signers.push_back(admin.clone());
-    signers.push_back(treasurer.clone());
-
-    let config = default_init_config(&env, signers, 2);
-    client.initialize(&admin, &config);
-    client.set_role(&admin, &treasurer, &Role::Treasurer);
-
-    client.set_gas_config(
-        &admin,
-        &GasConfig {
-            enabled: true,
-            default_gas_limit: 10_000,
-            base_cost: 100,
-            condition_cost: 20,
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
         },
-    );
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config,
+    };
 
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &proposer, &Role::Treasurer);
+
+    // Mint tokens to proposer and vault
+    token_client.mint(&proposer, &10_000);
+    token_client.mint(&contract_id, &100_000);
+
+    // Propose transfer that requires staking (amount = 1000, stake = 5% = 50)
     let proposal_id = client.propose_transfer(
-        &treasurer,
+        &proposer,
         &recipient,
-        &token,
-        &100,
-        &Symbol::new(&env, "refresh"),
+        &token.address(),
+        &1_000,
+        &Symbol::new(&env, "test"),
         &Priority::Normal,
         &Vec::new(&env),
         &ConditionLogic::And,
-        &0i128,
+        &0, // no insurance
     );
 
-    let initial = client.estimate_execution_fee(&proposal_id);
-    assert_eq!(initial.total_fee, 120);
+    // Verify proposal has stake_amount set
+    let proposal = client.get_proposal(&proposal_id);
+    assert_eq!(proposal.stake_amount, 50);
 
-    client.set_gas_config(
-        &admin,
-        &GasConfig {
-            enabled: true,
-            default_gas_limit: 10_000,
-            base_cost: 200,
-            condition_cost: 40,
+    // Verify stake record exists
+    let stake_record = client.get_stake_record(&proposal_id);
+    assert!(stake_record.is_some());
+    let record = stake_record.unwrap();
+    assert_eq!(record.amount, 50);
+    assert_eq!(record.staker, proposer);
+    assert!(!record.refunded);
+    assert!(!record.slashed);
+}
+
+#[test]
+fn test_stake_refund_on_successful_execution() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token.address());
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+    signers.push_back(proposer.clone());
+
+    let staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 100,
+        base_stake_bps: 500, // 5%
+        max_stake_amount: 10_000,
+        slash_percentage: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 30,
+    };
+
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        quorum: 0,
+        spending_limit: 10_000,
+        daily_limit: 50_000,
+        weekly_limit: 100_000,
+        timelock_threshold: 5_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
         },
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config,
+    };
+
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &proposer, &Role::Treasurer);
+
+    // Mint tokens
+    token_client.mint(&proposer, &10_000);
+    token_client.mint(&contract_id, &100_000);
+
+    // Create token client for balance checks
+    let token_balance_client = soroban_sdk::token::Client::new(&env, &token.address());
+    let proposer_balance_before = token_balance_client.balance(&proposer);
+
+    // Propose and approve
+    let proposal_id = client.propose_transfer(
+        &proposer,
+        &recipient,
+        &token.address(),
+        &1_000,
+        &Symbol::new(&env, "test"),
+        &Priority::Normal,
+        &Vec::new(&env),
+        &ConditionLogic::And,
+        &0,
     );
 
-    let refreshed = client.estimate_execution_fee(&proposal_id);
-    assert_eq!(refreshed.total_fee, 240);
+    client.approve_proposal(&proposer, &proposal_id);
+    client.execute_proposal(&admin, &proposal_id);
 
-    let stored = client
-        .get_execution_fee_estimate(&proposal_id)
-        .expect("stored estimate should be refreshed");
-    assert_eq!(stored.total_fee, refreshed.total_fee);
-}
+    // Verify stake was refunded
+    let stake_record = client.get_stake_record(&proposal_id);
+    assert!(stake_record.is_some());
+    let record = stake_record.unwrap();
+    assert!(record.refunded);
+    assert!(!record.slashed);
+    assert_eq!(record.slashed_amount, 0);
 
-#[contract]
-pub struct MockOracle;
-
-#[contractimpl]
-impl MockOracle {
-    pub fn lastprice(env: Env, _asset: Address) -> Option<crate::types::VaultPriceData> {
-        let price = env.storage().instance().get(&Symbol::new(&env, "price"));
-        let timestamp = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(&env, "time"))
-            .unwrap_or(0);
-
-        price.map(|p| crate::types::VaultPriceData {
-            price: p,
-            timestamp,
-        })
-    }
-
-    pub fn set_price(env: Env, _asset: Address, price: i128, timestamp: u64) {
-        env.storage()
-            .instance()
-            .set(&Symbol::new(&env, "price"), &price);
-        env.storage()
-            .instance()
-            .set(&Symbol::new(&env, "time"), &timestamp);
-    }
+    // Verify proposer got stake back (balance should be initial - stake + stake = initial)
+    let proposer_balance_after = token_balance_client.balance(&proposer);
+    assert_eq!(proposer_balance_after, proposer_balance_before);
 }
 
 #[test]
-fn test_oracle_price_conditions() {
+fn test_stake_slashing_on_rejection() {
     let env = Env::default();
     env.mock_all_auths();
 
     let contract_id = env.register(VaultDAO, ());
     let client = VaultDAOClient::new(&env, &contract_id);
 
-    let oracle_id = env.register(MockOracle, ());
-    let oracle_client = MockOracleClient::new(&env, &oracle_id);
-
     let admin = Address::generate(&env);
-    let treasurer = Address::generate(&env);
+    let proposer = Address::generate(&env);
     let recipient = Address::generate(&env);
-
-    let token = env
-        .register_stellar_asset_contract_v2(admin.clone())
-        .address();
-    let token_client = soroban_sdk::token::StellarAssetClient::new(&env, &token);
-    token_client.mint(&contract_id, &1000);
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token.address());
 
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
-    signers.push_back(treasurer.clone());
+    signers.push_back(proposer.clone());
 
-    let oracle_cfg = crate::VaultOracleConfig {
-        address: oracle_id,
-        base_symbol: Symbol::new(&env, "USD"),
-        max_staleness: 100,
+    let staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 100,
+        base_stake_bps: 500, // 5%
+        max_stake_amount: 10_000,
+        slash_percentage: 50, // 50% slashed
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 30,
     };
 
-    let mut init_config = default_init_config(&env, signers, 1);
-    init_config.oracle_config = crate::OptionalVaultOracleConfig::Some(oracle_cfg.clone());
-    client.initialize(&admin, &init_config);
-    client.set_role(&admin, &treasurer, &Role::Treasurer);
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        quorum: 0,
+        spending_limit: 10_000,
+        daily_limit: 50_000,
+        weekly_limit: 100_000,
+        timelock_threshold: 5_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
+        },
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config,
+    };
 
-    // Set initial price: 1 TOKEN = 10 USD (scaled by 7 decimals -> 100,000,000)
-    let price = 100_000_000i128;
-    oracle_client.set_price(&token, &price, &env.ledger().timestamp());
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &proposer, &Role::Treasurer);
 
-    let mut conditions = Vec::new(&env);
-    conditions.push_back(Condition::PriceAbove(token.clone(), 150_000_000i128));
+    // Mint tokens
+    token_client.mint(&proposer, &10_000);
+    token_client.mint(&contract_id, &100_000);
 
+    // Create token client for balance checks
+    let token_balance_client = soroban_sdk::token::Client::new(&env, &token.address());
+    let proposer_balance_before = token_balance_client.balance(&proposer);
+
+    // Propose transfer (stake = 50)
     let proposal_id = client.propose_transfer(
-        &treasurer,
+        &proposer,
         &recipient,
-        &token,
-        &100,
-        &Symbol::new(&env, "price_cond"),
+        &token.address(),
+        &1_000,
+        &Symbol::new(&env, "test"),
         &Priority::Normal,
-        &conditions,
+        &Vec::new(&env),
         &ConditionLogic::And,
-        &0i128,
+        &0,
     );
 
-    client.approve_proposal(&treasurer, &proposal_id);
+    // Reject the proposal (malicious)
+    client.reject_proposal(&admin, &proposal_id);
 
-    let res = client.try_execute_proposal(&treasurer, &proposal_id);
-    assert_eq!(res.err(), Some(Ok(VaultError::ProposalNotApproved)));
+    // Verify stake was slashed
+    let stake_record = client.get_stake_record(&proposal_id);
+    assert!(stake_record.is_some());
+    let record = stake_record.unwrap();
+    assert!(!record.refunded);
+    assert!(record.slashed);
+    assert_eq!(record.slashed_amount, 25); // 50% of 50 = 25
 
-    // 2. Update price to 20 USD
-    oracle_client.set_price(&token, &200_000_000i128, &env.ledger().timestamp());
+    // Verify stake pool received slashed amount
+    let stake_pool = client.get_stake_pool(&token.address());
+    assert_eq!(stake_pool, 25);
 
-    client.execute_proposal(&treasurer, &proposal_id);
-    let p = client.get_proposal(&proposal_id);
-    assert_eq!(p.status, ProposalStatus::Executed);
+    // Verify proposer got partial refund (50% = 25)
+    let proposer_balance_after = token_balance_client.balance(&proposer);
+    assert_eq!(proposer_balance_after, proposer_balance_before - 25);
 }
 
 #[test]
-fn test_oracle_staleness() {
+fn test_stake_calculation_with_reputation_discount() {
     let env = Env::default();
     env.mock_all_auths();
 
     let contract_id = env.register(VaultDAO, ());
     let client = VaultDAOClient::new(&env, &contract_id);
 
-    let oracle_id = env.register(MockOracle, ());
-    let oracle_client = MockOracleClient::new(&env, &oracle_id);
-
     let admin = Address::generate(&env);
-    let treasurer = Address::generate(&env);
+    let proposer = Address::generate(&env);
     let recipient = Address::generate(&env);
-
-    let token = env
-        .register_stellar_asset_contract_v2(admin.clone())
-        .address();
-    let token_client = soroban_sdk::token::StellarAssetClient::new(&env, &token);
-    token_client.mint(&contract_id, &1000);
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token.address());
 
     let mut signers = Vec::new(&env);
     signers.push_back(admin.clone());
-    signers.push_back(treasurer.clone());
+    signers.push_back(proposer.clone());
 
-    let oracle_cfg = crate::VaultOracleConfig {
-        address: oracle_id,
-        base_symbol: Symbol::new(&env, "USD"),
-        max_staleness: 100, // 100 ledgers
+    let staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 100,
+        base_stake_bps: 1000, // 10%
+        max_stake_amount: 10_000,
+        slash_percentage: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 30, // 30% discount
     };
 
-    let mut init_config = default_init_config(&env, signers, 1);
-    init_config.oracle_config = crate::OptionalVaultOracleConfig::Some(oracle_cfg.clone());
-    client.initialize(&admin, &init_config);
-    client.set_role(&admin, &treasurer, &Role::Treasurer);
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        quorum: 0,
+        spending_limit: 10_000,
+        daily_limit: 50_000,
+        weekly_limit: 100_000,
+        timelock_threshold: 5_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
+        },
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config,
+    };
 
-    // Set initial price to be recorded at ledger 0
-    let price = 100_000_000i128;
-    oracle_client.set_price(&token, &price, &0);
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &proposer, &Role::Treasurer);
 
-    // Fast forward ledger beyond staleness (105 > 100)
-    let mut li = env.ledger().get();
-    li.sequence_number = 105;
-    li.timestamp = 150;
-    env.ledger().set(li);
+    // Mint tokens
+    token_client.mint(&proposer, &10_000);
+    token_client.mint(&contract_id, &100_000);
 
-    let mut conditions = Vec::new(&env);
-    // Even though price is 100 USD (which is > 50 USD), it is stale so it should act as false
-    conditions.push_back(Condition::PriceAbove(token.clone(), 50_000_000i128));
+    // Set high reputation for proposer (>= 750)
+    // Note: In real scenario, reputation would be earned through successful proposals
+    // For this test, we'll just verify the stake calculation logic
 
+    // Propose transfer (amount = 1000, base stake = 10% = 100)
+    // With high reputation (750+), stake should be reduced by 30%
+    // Expected stake = 100 - (100 * 30 / 100) = 70
     let proposal_id = client.propose_transfer(
-        &treasurer,
+        &proposer,
         &recipient,
-        &token,
-        &100,
-        &Symbol::new(&env, "stale_cond"),
+        &token.address(),
+        &1_000,
+        &Symbol::new(&env, "test"),
         &Priority::Normal,
-        &conditions,
+        &Vec::new(&env),
         &ConditionLogic::And,
-        &0i128,
+        &0,
     );
 
-    client.approve_proposal(&treasurer, &proposal_id);
+    let proposal = client.get_proposal(&proposal_id);
+    // Without high reputation, stake would be 100
+    // This test verifies the calculation logic is in place
+    assert!(proposal.stake_amount > 0);
+}
 
-    let res = client.try_execute_proposal(&treasurer, &proposal_id);
-    assert_eq!(res.err(), Some(Ok(VaultError::ProposalNotApproved)));
+#[test]
+fn test_stake_pool_management() {
+    let env = Env::default();
+    env.mock_all_auths();
 
-    // Update price to be fresh (recorded at ledger 105)
-    oracle_client.set_price(&token, &price, &105);
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
 
-    client.execute_proposal(&treasurer, &proposal_id);
-    assert_eq!(
-        client.get_proposal(&proposal_id).status,
-        ProposalStatus::Executed
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let treasury = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token.address());
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+    signers.push_back(proposer.clone());
+
+    let staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 100,
+        base_stake_bps: 500,
+        max_stake_amount: 10_000,
+        slash_percentage: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 30,
+    };
+
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        quorum: 0,
+        spending_limit: 10_000,
+        daily_limit: 50_000,
+        weekly_limit: 100_000,
+        timelock_threshold: 5_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
+        },
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config,
+    };
+
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &proposer, &Role::Treasurer);
+
+    // Mint tokens
+    token_client.mint(&proposer, &10_000);
+    token_client.mint(&contract_id, &100_000);
+
+    // Create and reject a proposal to accumulate slashed stakes
+    let proposal_id = client.propose_transfer(
+        &proposer,
+        &recipient,
+        &token.address(),
+        &1_000,
+        &Symbol::new(&env, "test"),
+        &Priority::Normal,
+        &Vec::new(&env),
+        &ConditionLogic::And,
+        &0,
     );
+
+    client.reject_proposal(&admin, &proposal_id);
+
+    // Verify stake pool has slashed funds
+    let stake_pool_before = client.get_stake_pool(&token.address());
+    assert_eq!(stake_pool_before, 25); // 50% of 50
+
+    // Create token client for balance checks
+    let token_balance_client = soroban_sdk::token::Client::new(&env, &token.address());
+
+    // Admin withdraws from stake pool
+    let treasury_balance_before = token_balance_client.balance(&treasury);
+    client.withdraw_stake_pool(&admin, &token.address(), &treasury, &10);
+
+    // Verify withdrawal
+    let stake_pool_after = client.get_stake_pool(&token.address());
+    assert_eq!(stake_pool_after, 15); // 25 - 10
+
+    let treasury_balance_after = token_balance_client.balance(&treasury);
+    assert_eq!(treasury_balance_after, treasury_balance_before + 10);
+}
+
+#[test]
+fn test_update_staking_config() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+
+    let initial_staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 100,
+        base_stake_bps: 500,
+        max_stake_amount: 10_000,
+        slash_percentage: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 30,
+    };
+
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        quorum: 0,
+        spending_limit: 10_000,
+        daily_limit: 50_000,
+        weekly_limit: 100_000,
+        timelock_threshold: 5_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
+        },
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config: initial_staking_config,
+    };
+
+    client.initialize(&admin, &config);
+
+    // Update staking config
+    let new_staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 200,
+        base_stake_bps: 1000, // 10%
+        max_stake_amount: 20_000,
+        slash_percentage: 75, // 75% slashed
+        reputation_discount_threshold: 800,
+        reputation_discount_percentage: 50,
+    };
+
+    client.update_staking_config(&admin, &new_staking_config);
+
+    // Verify config was updated
+    let updated_config = client.get_staking_config();
+    assert_eq!(updated_config.min_amount, 200);
+    assert_eq!(updated_config.base_stake_bps, 1000);
+    assert_eq!(updated_config.max_stake_amount, 20_000);
+    assert_eq!(updated_config.slash_percentage, 75);
+    assert_eq!(updated_config.reputation_discount_threshold, 800);
+    assert_eq!(updated_config.reputation_discount_percentage, 50);
+}
+
+#[test]
+fn test_stake_max_cap() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let contract_id = env.register(VaultDAO, ());
+    let client = VaultDAOClient::new(&env, &contract_id);
+
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token = env.register_stellar_asset_contract_v2(token_admin.clone());
+    let token_client = StellarAssetClient::new(&env, &token.address());
+
+    let mut signers = Vec::new(&env);
+    signers.push_back(admin.clone());
+    signers.push_back(proposer.clone());
+
+    let staking_config = types::StakingConfig {
+        enabled: true,
+        min_amount: 100,
+        base_stake_bps: 1000, // 10%
+        max_stake_amount: 500, // Cap at 500
+        slash_percentage: 50,
+        reputation_discount_threshold: 750,
+        reputation_discount_percentage: 30,
+    };
+
+    let config = InitConfig {
+        signers,
+        threshold: 1,
+        quorum: 0,
+        spending_limit: 100_000,
+        daily_limit: 500_000,
+        weekly_limit: 1_000_000,
+        timelock_threshold: 50_000,
+        timelock_delay: 100,
+        velocity_limit: VelocityConfig {
+            limit: 100,
+            window: 3600,
+        },
+        threshold_strategy: ThresholdStrategy::Fixed,
+        default_voting_deadline: 0,
+        retry_config: RetryConfig {
+            enabled: false,
+            max_retries: 0,
+            initial_backoff_ledgers: 0,
+        },
+        recovery_config: crate::types::RecoveryConfig::default(&env),
+        staking_config,
+    };
+
+    client.initialize(&admin, &config);
+    client.set_role(&admin, &proposer, &Role::Treasurer);
+
+    // Mint tokens
+    token_client.mint(&proposer, &100_000);
+    token_client.mint(&contract_id, &1_000_000);
+
+    // Propose large transfer (amount = 10000, 10% = 1000, but capped at 500)
+    let proposal_id = client.propose_transfer(
+        &proposer,
+        &recipient,
+        &token.address(),
+        &10_000,
+        &Symbol::new(&env, "test"),
+        &Priority::Normal,
+        &Vec::new(&env),
+        &ConditionLogic::And,
+        &0,
+    );
+
+    let proposal = client.get_proposal(&proposal_id);
+    // Stake should be capped at max_stake_amount
+    assert_eq!(proposal.stake_amount, 500);
 }

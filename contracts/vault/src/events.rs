@@ -235,6 +235,46 @@ pub fn emit_insurance_returned(env: &Env, proposal_id: u64, proposer: &Address, 
 }
 
 // ============================================================================
+// Staking Events (feature/proposal-staking)
+// ============================================================================
+
+/// Emit when stake is locked on proposal creation
+pub fn emit_stake_locked(
+    env: &Env,
+    proposal_id: u64,
+    proposer: &Address,
+    amount: i128,
+    token: &Address,
+) {
+    env.events().publish(
+        (Symbol::new(env, "stake_locked"), proposal_id),
+        (proposer.clone(), amount, token.clone()),
+    );
+}
+
+/// Emit when stake is slashed for malicious proposal
+pub fn emit_stake_slashed(
+    env: &Env,
+    proposal_id: u64,
+    proposer: &Address,
+    slashed_amount: i128,
+    returned_amount: i128,
+) {
+    env.events().publish(
+        (Symbol::new(env, "stake_slashed"), proposal_id),
+        (proposer.clone(), slashed_amount, returned_amount),
+    );
+}
+
+/// Emit when stake is refunded on successful execution
+pub fn emit_stake_refunded(env: &Env, proposal_id: u64, proposer: &Address, amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "stake_refunded"), proposal_id),
+        (proposer.clone(), amount),
+    );
+}
+
+// ============================================================================
 // Reputation Events (feature/reputation-system)
 // ============================================================================
 
@@ -675,44 +715,33 @@ pub fn emit_recovery_config_updated(env: &Env, admin: &Address) {
         .publish((Symbol::new(env, "recovery_cfg_updated"),), admin.clone());
 }
 
-// ============================================================================
-// Streaming Events (feature/streaming-payments)
-// ============================================================================
+/// Emit when fee structure is updated
+pub fn emit_fee_structure_updated(env: &Env, admin: &Address, enabled: bool) {
+    env.events().publish(
+        (Symbol::new(env, "fee_structure_updated"),),
+        (admin.clone(), enabled),
+    );
+}
 
-/// Emit when a new token stream is created
-pub fn emit_stream_created(
+/// Emit when a fee is collected from a transaction
+pub fn emit_fee_collected(
     env: &Env,
-    stream_id: u64,
-    sender: &Address,
-    recipient: &Address,
+    user: &Address,
     token: &Address,
     amount: i128,
-    rate: i128,
+    fee: i128,
+    fee_bps: u32,
+    reputation_discount_applied: bool,
 ) {
     env.events().publish(
-        (Symbol::new(env, "stream_created"), stream_id),
+        (Symbol::new(env, "fee_collected"),),
         (
-            sender.clone(),
-            recipient.clone(),
+            user.clone(),
             token.clone(),
             amount,
-            rate,
+            fee,
+            fee_bps,
+            reputation_discount_applied,
         ),
-    );
-}
-
-/// Emit when a stream status is updated (paused, resumed, or cancelled)
-pub fn emit_stream_status_updated(env: &Env, stream_id: u64, status: u32, updated_by: &Address) {
-    env.events().publish(
-        (Symbol::new(env, "stream_status"), stream_id),
-        (status, updated_by.clone()),
-    );
-}
-
-/// Emit when tokens are claimed from a stream
-pub fn emit_stream_claimed(env: &Env, stream_id: u64, recipient: &Address, amount: i128) {
-    env.events().publish(
-        (Symbol::new(env, "stream_claimed"), stream_id),
-        (recipient.clone(), amount),
     );
 }
