@@ -150,6 +150,18 @@ pub fn emit_config_updated(env: &Env, updater: &Address) {
         .publish((Symbol::new(env, "config_updated"),), updater.clone());
 }
 
+// ============================================================================
+// Oracle Events (feature/oracle-integration)
+// ============================================================================
+
+/// Emit when oracle configuration is updated by admin
+pub fn emit_oracle_config_updated(env: &Env, admin: &Address, oracle: &Address) {
+    env.events().publish(
+        (Symbol::new(env, "oracle_cfg_updated"),),
+        (admin.clone(), oracle.clone()),
+    );
+}
+
 /// Emit when quorum configuration is updated by admin
 pub fn emit_quorum_updated(env: &Env, admin: &Address, old_quorum: u32, new_quorum: u32) {
     env.events().publish(
@@ -294,6 +306,98 @@ pub fn emit_hook_registered(env: &Env, hook: &Address, is_pre: bool) {
 
 /// Emit when a hook is removed
 pub fn emit_hook_removed(env: &Env, hook: &Address, is_pre: bool) {
+/// Emit when liquidity is removed
+pub fn emit_liquidity_removed(env: &Env, proposal_id: u64, dex: &Address, lp_tokens: i128) {
+    env.events().publish(
+        (Symbol::new(env, "liquidity_removed"), proposal_id),
+        (dex.clone(), lp_tokens),
+    );
+}
+
+/// Emit when LP tokens are staked
+pub fn emit_lp_staked(env: &Env, proposal_id: u64, farm: &Address, amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "lp_staked"), proposal_id),
+        (farm.clone(), amount),
+    );
+}
+
+/// Emit when rewards are claimed
+pub fn emit_rewards_claimed(env: &Env, proposal_id: u64, farm: &Address, amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "rewards_claimed"), proposal_id),
+        (farm.clone(), amount),
+    );
+}
+
+// ============================================================================
+// Gas Limit Events (feature/gas-limits)
+// ============================================================================
+
+/// Emit when a proposal execution is blocked by its gas limit
+pub fn emit_gas_limit_exceeded(env: &Env, proposal_id: u64, gas_used: u64, gas_limit: u64) {
+    env.events().publish(
+        (Symbol::new(env, "gas_limit_exceeded"), proposal_id),
+        (gas_used, gas_limit),
+    );
+}
+
+/// Emit when gas configuration is updated by admin
+pub fn emit_gas_config_updated(env: &Env, admin: &Address) {
+    env.events()
+        .publish((Symbol::new(env, "gas_cfg_updated"),), admin.clone());
+}
+
+/// Emit when execution fee estimate is calculated/refreshed for a proposal.
+pub fn emit_execution_fee_estimated(
+    env: &Env,
+    proposal_id: u64,
+    base_fee: u64,
+    resource_fee: u64,
+    total_fee: u64,
+) {
+    env.events().publish(
+        (Symbol::new(env, "exec_fee_estimated"), proposal_id),
+        (base_fee, resource_fee, total_fee),
+    );
+}
+
+/// Emit when a proposal execution consumes its estimated fee.
+pub fn emit_execution_fee_used(env: &Env, proposal_id: u64, total_fee: u64) {
+    env.events()
+        .publish((Symbol::new(env, "exec_fee_used"), proposal_id), total_fee);
+}
+
+// ============================================================================
+// Performance Metrics Events (feature/performance-metrics)
+// ============================================================================
+
+/// Emit when vault-wide metrics are updated
+pub fn emit_metrics_updated(
+    env: &Env,
+    executed: u64,
+    rejected: u64,
+    expired: u64,
+    success_rate_bps: u32,
+) {
+    env.events().publish(
+        (Symbol::new(env, "metrics_updated"),),
+        (executed, rejected, expired, success_rate_bps),
+    );
+}
+
+// ============================================================================
+// Voting Deadline Events
+// ============================================================================
+
+/// Emit when a proposal's voting deadline is extended
+pub fn emit_voting_deadline_extended(
+    env: &Env,
+    proposal_id: u64,
+    old_deadline: u64,
+    new_deadline: u64,
+    admin: &Address,
+) {
     env.events().publish(
         (Symbol::new(env, "hook_removed"),),
         (hook.clone(), is_pre),
@@ -405,119 +509,63 @@ pub fn emit_retries_exhausted(env: &Env, proposal_id: u64, total_attempts: u32) 
 }
 
 // ============================================================================
-// Cross-Vault Events (feature/cross-vault-coordination)
+// Subscription Events (feature/subscription-system)
 // ============================================================================
 
-/// Emit when a cross-vault proposal is created
-pub fn emit_cross_vault_proposed(
+/// Emit when a new subscription is created
+pub fn emit_subscription_created(
     env: &Env,
-    proposal_id: u64,
-    proposer: &Address,
-    num_actions: u32,
-) {
-    env.events().publish(
-        (Symbol::new(env, "xvault_proposed"), proposal_id),
-        (proposer.clone(), num_actions),
-    );
-}
-
-/// Emit when cross-vault execution starts
-pub fn emit_cross_vault_execution_started(
-    env: &Env,
-    proposal_id: u64,
-    executor: &Address,
-    num_actions: u32,
-) {
-    env.events().publish(
-        (Symbol::new(env, "xvault_exec_start"), proposal_id),
-        (executor.clone(), num_actions),
-    );
-}
-
-/// Emit when a single cross-vault action is executed
-pub fn emit_cross_vault_action_executed(
-    env: &Env,
-    proposal_id: u64,
-    action_index: u32,
-    vault_address: &Address,
+    subscription_id: u64,
+    subscriber: &Address,
+    tier: u32,
     amount: i128,
 ) {
     env.events().publish(
-        (Symbol::new(env, "xvault_action"), proposal_id),
-        (action_index, vault_address.clone(), amount),
+        (Symbol::new(env, "subscription_created"), subscription_id),
+        (subscriber.clone(), tier, amount),
     );
 }
 
-/// Emit when all cross-vault actions complete successfully
-pub fn emit_cross_vault_executed(
+/// Emit when a subscription is renewed
+pub fn emit_subscription_renewed(
     env: &Env,
-    proposal_id: u64,
-    executor: &Address,
-    num_actions: u32,
-) {
-    env.events().publish(
-        (Symbol::new(env, "xvault_executed"), proposal_id),
-        (executor.clone(), num_actions),
-    );
-}
-
-/// Emit when a participant vault receives and executes a cross-vault action
-pub fn emit_cross_vault_action_received(
-    env: &Env,
-    coordinator: &Address,
-    recipient: &Address,
-    token: &Address,
+    subscription_id: u64,
+    payment_number: u32,
     amount: i128,
 ) {
     env.events().publish(
-        (Symbol::new(env, "xvault_received"),),
-        (
-            coordinator.clone(),
-            recipient.clone(),
-            token.clone(),
-            amount,
-        ),
+        (Symbol::new(env, "subscription_renewed"), subscription_id),
+        (payment_number, amount),
     );
 }
 
-/// Emit when cross-vault configuration is updated
-pub fn emit_cross_vault_config_updated(env: &Env, admin: &Address) {
+/// Emit when a subscription is cancelled
+pub fn emit_subscription_cancelled(env: &Env, subscription_id: u64, cancelled_by: &Address) {
+    env.events().publish(
+        (Symbol::new(env, "subscription_cancelled"), subscription_id),
+        cancelled_by.clone(),
+    );
+}
+
+/// Emit when a subscription tier is upgraded
+pub fn emit_subscription_upgraded(
+    env: &Env,
+    subscription_id: u64,
+    old_tier: u32,
+    new_tier: u32,
+    new_amount: i128,
+) {
+    env.events().publish(
+        (Symbol::new(env, "subscription_upgraded"), subscription_id),
+        (old_tier, new_tier, new_amount),
+    );
+}
+
+/// Emit when a subscription expires
+#[allow(dead_code)]
+pub fn emit_subscription_expired(env: &Env, subscription_id: u64) {
     env.events()
-        .publish((Symbol::new(env, "xvault_cfg_updated"),), admin.clone());
-}
-
-// ============================================================================
-// Dispute Resolution Events (feature/dispute-resolution)
-// ============================================================================
-
-/// Emit when a dispute is filed against a proposal
-pub fn emit_dispute_filed(env: &Env, dispute_id: u64, proposal_id: u64, disputer: &Address) {
-    env.events().publish(
-        (Symbol::new(env, "dispute_filed"), dispute_id),
-        (proposal_id, disputer.clone()),
-    );
-}
-
-/// Emit when a dispute is resolved by an arbitrator
-pub fn emit_dispute_resolved(
-    env: &Env,
-    dispute_id: u64,
-    proposal_id: u64,
-    arbitrator: &Address,
-    resolution: u32,
-) {
-    env.events().publish(
-        (Symbol::new(env, "dispute_resolved"), dispute_id),
-        (proposal_id, arbitrator.clone(), resolution),
-    );
-}
-
-/// Emit when arbitrator list is updated
-pub fn emit_arbitrators_updated(env: &Env, admin: &Address, count: u32) {
-    env.events().publish(
-        (Symbol::new(env, "arbitrators_updated"),),
-        (admin.clone(), count),
-    );
+        .publish((Symbol::new(env, "subscription_expired"),), subscription_id);
 }
 // ============================================================================
 // Escrow Events (feature/escrow-system)
@@ -625,4 +673,46 @@ pub fn emit_recovery_cancelled(env: &Env, recovery_id: u64, canceller: &Address)
 pub fn emit_recovery_config_updated(env: &Env, admin: &Address) {
     env.events()
         .publish((Symbol::new(env, "recovery_cfg_updated"),), admin.clone());
+}
+
+// ============================================================================
+// Streaming Events (feature/streaming-payments)
+// ============================================================================
+
+/// Emit when a new token stream is created
+pub fn emit_stream_created(
+    env: &Env,
+    stream_id: u64,
+    sender: &Address,
+    recipient: &Address,
+    token: &Address,
+    amount: i128,
+    rate: i128,
+) {
+    env.events().publish(
+        (Symbol::new(env, "stream_created"), stream_id),
+        (
+            sender.clone(),
+            recipient.clone(),
+            token.clone(),
+            amount,
+            rate,
+        ),
+    );
+}
+
+/// Emit when a stream status is updated (paused, resumed, or cancelled)
+pub fn emit_stream_status_updated(env: &Env, stream_id: u64, status: u32, updated_by: &Address) {
+    env.events().publish(
+        (Symbol::new(env, "stream_status"), stream_id),
+        (status, updated_by.clone()),
+    );
+}
+
+/// Emit when tokens are claimed from a stream
+pub fn emit_stream_claimed(env: &Env, stream_id: u64, recipient: &Address, amount: i128) {
+    env.events().publish(
+        (Symbol::new(env, "stream_claimed"), stream_id),
+        (recipient.clone(), amount),
+    );
 }

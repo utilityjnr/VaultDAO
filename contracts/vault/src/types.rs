@@ -19,6 +19,33 @@
 
 use soroban_sdk::{contracttype, Address, Env, Map, String, Symbol, Vec};
 
+/// Oracle configuration for price feeds
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VaultOracleConfig {
+    /// Address of the oracle contract
+    pub address: Address,
+    /// Asset symbol for the base currency (e.g., USD)
+    pub base_symbol: Symbol,
+    /// Maximum ledgers before price is considered stale
+    pub max_staleness: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OptionalVaultOracleConfig {
+    None,
+    Some(VaultOracleConfig),
+}
+
+/// Price data from an oracle
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VaultPriceData {
+    pub price: i128,
+    pub timestamp: u64,
+}
+
 /// Initialization configuration - groups all config params to reduce function arguments
 #[contracttype]
 #[derive(Clone, Debug)]
@@ -47,6 +74,14 @@ pub struct InitConfig {
     pub pre_execution_hooks: Vec<Address>,
     /// Post-execution hooks
     pub post_execution_hooks: Vec<Address>,
+    /// Default voting deadline in ledgers (0 = no deadline)
+    pub default_voting_deadline: u64,
+    /// Retry configuration for failed executions
+    pub retry_config: RetryConfig,
+    /// Recovery configuration
+    pub recovery_config: RecoveryConfig,
+    /// Oracle configuration for price feeds
+    pub oracle_config: OptionalVaultOracleConfig,
 }
 
 /// Vault configuration
@@ -79,6 +114,25 @@ pub struct Config {
     pub pre_execution_hooks: Vec<Address>,
     /// Post-execution hooks
     pub post_execution_hooks: Vec<Address>,
+    /// Default voting deadline in ledgers (0 = no deadline)
+    pub default_voting_deadline: u64,
+    /// Retry configuration for failed executions
+    pub retry_config: RetryConfig,
+    /// Recovery configuration
+    pub recovery_config: RecoveryConfig,
+    /// Oracle configuration for price feeds
+    pub oracle_config: OptionalVaultOracleConfig,
+}
+
+/// Audit record for a cancelled proposal
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct CancellationRecord {
+    pub proposal_id: u64,
+    pub cancelled_by: Address,
+    pub reason: Symbol,
+    pub cancelled_at_ledger: u64,
+    pub refunded_amount: i128,
 }
 
 /// Audit record for a proposal amendment
@@ -145,6 +199,48 @@ pub enum Role {
     Admin = 2,
 }
 
+/// Granular permissions for fine-grained access control
+#[contracttype]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum Permission {
+    CreateProposal = 0,
+    ApproveProposal = 1,
+    ExecuteProposal = 2,
+    CancelProposal = 3,
+    ManageRoles = 4,
+    ManageSigners = 5,
+    ManageConfig = 6,
+    ManageRecurring = 7,
+    ManageLists = 8,
+    ManageTemplates = 9,
+    ManageEscrow = 10,
+    ManageSubscriptions = 11,
+    ViewMetrics = 12,
+    ManageRecovery = 13,
+}
+
+/// Permission grant with optional expiry
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PermissionGrant {
+    pub permission: Permission,
+    pub granted_by: Address,
+    pub granted_at: u64,
+    pub expires_at: Option<u64>,
+}
+
+/// Delegated permission with expiry
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct DelegatedPermission {
+    pub permission: Permission,
+    pub delegator: Address,
+    pub delegatee: Address,
+    pub granted_at: u64,
+    pub expires_at: u64,
+}
+
 /// The lifecycle states of a proposal.
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -185,6 +281,10 @@ pub enum Condition {
     DateAfter(u64),
     /// Execute only before this ledger sequence
     DateBefore(u64),
+    /// Execute only when asset price is above threshold (in USD)
+    PriceAbove(Address, i128),
+    /// Execute only when asset price is below threshold (in USD)
+    PriceBelow(Address, i128),
 }
 
 /// Logic for combining multiple conditions
@@ -302,6 +402,55 @@ pub struct RecurringPayment {
     pub is_active: bool,
 }
 
+// ============================================================================
+// Streaming Payments (Issue: feature/streaming-payments)
+// ============================================================================
+
+/// Status of a token stream
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(u32)]
+pub enum StreamStatus {
+    /// Stream is active and accumulating claimable tokens
+    Active = 0,
+    /// Stream is paused; no tokens accumulate until resumed
+    Paused = 1,
+    /// Stream was cancelled; any remaining tokens returned to sender
+    Cancelled = 2,
+    /// Stream has reached its end time and all tokens are claimed
+    Completed = 3,
+}
+
+/// Continuous token transfer over time
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct StreamingPayment {
+    /// Unique stream ID
+    pub id: u64,
+    /// Address that created and funded the stream
+    pub sender: Address,
+    /// Address receiving the tokens
+    pub recipient: Address,
+    /// Token contract address
+    pub token_addr: Address,
+    /// Tokens per second (scaled to token decimals)
+    pub rate: i128,
+    /// Total amount committed to the stream
+    pub total_amount: i128,
+    /// Total amount already claimed by recipient
+    pub claimed_amount: i128,
+    /// Ledger timestamp when the stream was created
+    pub start_timestamp: u64,
+    /// Ledger timestamp when the stream will finish
+    pub end_timestamp: u64,
+    /// Ledger timestamp of the last status update or claim
+    pub last_update_timestamp: u64,
+    /// Total active seconds accumulated before the last pause
+    pub accumulated_seconds: u64,
+    /// Current status
+    pub status: StreamStatus,
+}
+
 #[contracttype]
 #[derive(Clone, Debug)]
 pub struct VelocityConfig {
@@ -339,8 +488,8 @@ pub struct Reputation {
     pub last_decay_ledger: u64,
 }
 
-impl Reputation {
-    pub fn default() -> Self {
+impl Default for Reputation {
+    fn default() -> Self {
         Reputation {
             score: 500, // Start at neutral 500/1000
             proposals_executed: 0,
@@ -388,8 +537,8 @@ pub struct NotificationPreferences {
     pub notify_on_expiry: bool,
 }
 
-impl NotificationPreferences {
-    pub fn default() -> Self {
+impl Default for NotificationPreferences {
+    fn default() -> Self {
         NotificationPreferences {
             notify_on_proposal: true,
             notify_on_approval: true,
@@ -418,8 +567,8 @@ pub struct GasConfig {
     pub condition_cost: u64,
 }
 
-impl GasConfig {
-    pub fn default() -> Self {
+impl Default for GasConfig {
+    fn default() -> Self {
         GasConfig {
             enabled: false,
             default_gas_limit: 0,
@@ -429,13 +578,27 @@ impl GasConfig {
     }
 }
 
+/// Estimated execution fee breakdown for a proposal.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct ExecutionFeeEstimate {
+    /// Flat base fee component.
+    pub base_fee: u64,
+    /// Dynamic fee component based on proposal execution complexity.
+    pub resource_fee: u64,
+    /// Total estimated execution fee.
+    pub total_fee: u64,
+    /// Number of logical operations used to derive `resource_fee`.
+    pub operation_count: u32,
+}
+
 // ============================================================================
 // Performance Metrics (Issue: feature/performance-metrics)
 // ============================================================================
 
 /// Vault-wide cumulative performance metrics
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct VaultMetrics {
     /// Total number of proposals ever created
     pub total_proposals: u64,
@@ -454,18 +617,6 @@ pub struct VaultMetrics {
 }
 
 impl VaultMetrics {
-    pub fn default() -> Self {
-        VaultMetrics {
-            total_proposals: 0,
-            executed_count: 0,
-            rejected_count: 0,
-            expired_count: 0,
-            total_execution_time_ledgers: 0,
-            total_gas_used: 0,
-            last_updated_ledger: 0,
-        }
-    }
-
     /// Success rate in basis points (0-10000)
     pub fn success_rate_bps(&self) -> u32 {
         let total = self.executed_count + self.rejected_count + self.expired_count;
@@ -706,123 +857,60 @@ pub struct RetryState {
 }
 
 // ============================================================================
-// Cross-Vault Proposal Coordination (Issue: feature/cross-vault-coordination)
+// Subscription System (Issue: feature/subscription-system)
 // ============================================================================
 
-/// Status of a cross-vault proposal
+/// Subscription tier levels
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
-pub enum CrossVaultStatus {
-    Pending = 0,
-    Approved = 1,
-    Executed = 2,
-    Failed = 3,
-    Cancelled = 4,
+pub enum SubscriptionTier {
+    Basic = 0,
+    Standard = 1,
+    Premium = 2,
+    Enterprise = 3,
 }
 
-/// Describes a single action to be executed on a participant vault
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct VaultAction {
-    /// Address of the participant vault contract
-    pub vault_address: Address,
-    /// Recipient of the transfer from the participant vault
-    pub recipient: Address,
-    /// Token contract address
-    pub token: Address,
-    /// Amount to transfer
-    pub amount: i128,
-    /// Optional memo
-    pub memo: Symbol,
-}
-
-/// Cross-vault proposal stored alongside the base Proposal
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct CrossVaultProposal {
-    /// List of actions to execute across participant vaults
-    pub actions: Vec<VaultAction>,
-    /// Current status of the cross-vault proposal
-    pub status: CrossVaultStatus,
-    /// Per-action execution results (true = success)
-    pub execution_results: Vec<bool>,
-    /// Ledger when executed (0 if not yet executed)
-    pub executed_at: u64,
-}
-
-/// Configuration for cross-vault participation
-#[contracttype]
-#[derive(Clone, Debug)]
-pub struct CrossVaultConfig {
-    /// Whether this vault participates in cross-vault operations
-    pub enabled: bool,
-    /// Vault addresses authorized to coordinate actions on this vault
-    pub authorized_coordinators: Vec<Address>,
-    /// Maximum amount per single cross-vault action
-    pub max_action_amount: i128,
-    /// Maximum number of actions in a single cross-vault proposal
-    pub max_actions: u32,
-}
-
-// ============================================================================
-// Dispute Resolution (Issue: feature/dispute-resolution)
-// ============================================================================
-
-/// Lifecycle status of a dispute
+/// Subscription status
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u32)]
-pub enum DisputeStatus {
-    /// Dispute has been filed, awaiting arbitrator review
-    Filed = 0,
-    /// Arbitrator is actively reviewing the dispute
-    UnderReview = 1,
-    /// Dispute has been resolved by an arbitrator
-    Resolved = 2,
-    /// Dispute was dismissed by an arbitrator
-    Dismissed = 3,
+pub enum SubscriptionStatus {
+    Active = 0,
+    Cancelled = 1,
+    Expired = 2,
+    Suspended = 3,
 }
 
-/// Outcome of a dispute resolution
-#[contracttype]
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(u32)]
-pub enum DisputeResolution {
-    /// Ruling in favor of the original proposer (proposal proceeds)
-    InFavorOfProposer = 0,
-    /// Ruling in favor of the disputer (proposal rejected)
-    InFavorOfDisputer = 1,
-    /// Compromise reached (proposal modified or partially executed)
-    Compromise = 2,
-    /// Dispute dismissed as invalid
-    Dismissed = 3,
-}
-
-/// On-chain dispute record for a contested proposal
+/// Subscription record
 #[contracttype]
 #[derive(Clone, Debug)]
-pub struct Dispute {
-    /// Unique dispute ID
+pub struct Subscription {
     pub id: u64,
-    /// ID of the disputed proposal
-    pub proposal_id: u64,
-    /// Address that filed the dispute
-    pub disputer: Address,
-    /// Short reason for the dispute
-    pub reason: Symbol,
-    /// IPFS hashes or on-chain references to supporting evidence
-    pub evidence: Vec<String>,
-    /// Current status
-    pub status: DisputeStatus,
-    /// Resolution outcome (only set when status is Resolved or Dismissed)
-    pub resolution: DisputeResolution,
-    /// Arbitrator who resolved the dispute (zero-value until resolved)
-    pub arbitrator: Address,
-    /// Ledger when dispute was filed
-    pub filed_at: u64,
-    /// Ledger when dispute was resolved (0 if unresolved)
-    pub resolved_at: u64,
+    pub subscriber: Address,
+    pub service_provider: Address,
+    pub tier: SubscriptionTier,
+    pub token: Address,
+    pub amount_per_period: i128,
+    pub interval_ledgers: u64,
+    pub next_renewal_ledger: u64,
+    pub created_at: u64,
+    pub status: SubscriptionStatus,
+    pub total_payments: u32,
+    pub last_payment_ledger: u64,
+    pub auto_renew: bool,
+}
+
+/// Payment record for subscription tracking
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct SubscriptionPayment {
+    pub subscription_id: u64,
+    pub payment_number: u32,
+    pub amount: i128,
+    pub paid_at: u64,
+    pub period_start: u64,
+    pub period_end: u64,
 }
 
 // ============================================================================
@@ -975,4 +1063,75 @@ impl Escrow {
         }
         (self.total_amount * completed_percentage as i128) / 100 - self.released_amount
     }
+}
+
+/// A single operation within a batch transaction
+#[contracttype]
+#[derive(Clone)]
+pub struct BatchOperation {
+    /// Operation type (e.g., "transfer", "swap", "liquidity")
+    pub op_type: Symbol,
+    /// Recipient address
+    pub recipient: Address,
+    /// Token contract address
+    pub token: Address,
+    /// Amount for the operation
+    pub amount: i128,
+    /// Optional data for operation (e.g., swap params)
+    pub data: String,
+}
+
+/// Status of a batch transaction
+#[contracttype]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum BatchStatus {
+    /// Awaiting execution
+    Pending = 0,
+    /// Currently executing
+    Executing = 1,
+    /// Successfully completed
+    Completed = 2,
+    /// Failed during execution
+    Failed = 3,
+    /// Rolled back due to failure
+    RolledBack = 4,
+}
+
+/// Atomic batch transaction containing multiple operations
+#[contracttype]
+#[derive(Clone)]
+pub struct BatchTransaction {
+    /// Unique batch ID
+    pub id: u64,
+    /// Creator of the batch
+    pub creator: Address,
+    /// List of operations to execute atomically
+    pub operations: Vec<BatchOperation>,
+    /// Current status
+    pub status: BatchStatus,
+    /// Timestamp when created
+    pub created_at: u64,
+    /// Memo for the batch
+    pub memo: Symbol,
+    /// Gas estimate for the batch
+    pub estimated_gas: u64,
+}
+
+/// Result of a batch transaction execution
+#[contracttype]
+#[derive(Clone)]
+pub struct BatchExecutionResult {
+    /// Batch ID
+    pub batch_id: u64,
+    /// Whether execution succeeded
+    pub success: bool,
+    /// Index of failed operation (if any)
+    pub failed_operation_index: u64,
+    /// Error message if failed
+    pub error: Symbol,
+    /// Number of operations executed before failure
+    pub executed_count: u64,
+    /// Ledger when executed
+    pub executed_at: u64,
 }
